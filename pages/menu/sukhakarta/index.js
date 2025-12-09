@@ -6,7 +6,7 @@ import { supabase } from '../../../lib/supabaseClient';
 const LOGO_URL = '/logo.png'; // put logo file in /public/logo.png
 const WEBSITE_URL = 'https://sukhakarta-menu.vercel.app/menu/sukhakarta'; // TODO: change to your real site
 const WHATSAPP_NUMBER = '918087541496'; // your WhatsApp number
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwG1pQlJ8x4utVB3pmtW0VexiuAv0LfI7LRj63m37ZLLFrbvhv0zS_NYmgKAp1hFVQu/exec';
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzGgdzhju1saQtH1aDKqVWgp0yFEn2TK-6bgHmDxSlQVsrCdU4UbRv5qd8LgkFU8f_h/exec';
 // e.g. 'https://script.google.com/macros/s/AKfycbx.../exec'
 
 export default function SukhakartaMenu() {
