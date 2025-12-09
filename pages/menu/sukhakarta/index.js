@@ -5,7 +5,9 @@ import { supabase } from '../../../lib/supabaseClient';
 
 const LOGO_URL = '/logo.png'; // put logo file in /public/logo.png
 const WEBSITE_URL = 'https://sukhakarta-menu.vercel.app/menu/sukhakarta'; // TODO: change to your real site
-const WHATSAPP_NUMBER = '918087541496'; // TODO: change to your real WhatsApp number
+const WHATSAPP_NUMBER = '918087541496'; // your WhatsApp number
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxCsG4qfcHe1n0aY4J6j-mRgY7CnmoKUVNOghsC904GmnCvc0TWigpgSCp-GZ9u4QLl/exec'; 
+// e.g. 'https://script.google.com/macros/s/AKfycbx.../exec'
 
 export default function SukhakartaMenu() {
   const [categories, setCategories] = useState([]);
@@ -13,7 +15,6 @@ export default function SukhakartaMenu() {
   const [activeCategoryId, setActiveCategoryId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [quantities, setQuantities] = useState({}); // item.id -> quantity
-  const [selectedRoom, setSelectedRoom] = useState('1'); // selected room number
 
   useEffect(() => {
     const loadData = async () => {
@@ -44,73 +45,122 @@ export default function SukhakartaMenu() {
     ? items.filter((i) => i.category_id === activeCategoryId)
     : items;
 
-  // Quantity helpers
-  const getQuantity = (id) => quantities[id] || 1;
+  // --------- Quantity helpers ----------
+  const getQuantity = (id) => quantities[id] || 0;
 
   const changeQuantity = (id, delta) => {
     setQuantities((prev) => {
-      const current = prev[id] || 1;
+      const current = prev[id] || 0;
       const next = current + delta;
-      return { ...prev, [id]: next < 1 ? 1 : next };
+      if (next <= 0) {
+        const copy = { ...prev };
+        delete copy[id];
+        return copy;
+      }
+      return { ...prev, [id]: next };
     });
   };
 
-  const handleOrder = (item) => {
-    const qty = getQuantity(item.id);
-    const message = `Hi, I'd like to order ${qty} x *${item.name}* from Sukhakarta Holiday Home menu. Room No: ${selectedRoom}`;
+  // --------- Cart derived values ----------
+  const cartItems = items
+    .map((item) => ({
+      ...item,
+      qty: getQuantity(item.id),
+    }))
+    .filter((item) => item.qty > 0);
+
+  const cartCount = cartItems.reduce((sum, it) => sum + it.qty, 0);
+  const cartTotal = cartItems.reduce(
+    (sum, it) => sum + (Number(it.price) || 0) * it.qty,
+    0
+  );
+
+  const handlePlaceOrder = async () => {
+    if (typeof window === 'undefined') return;
+    if (!cartItems.length) {
+      alert('Please add at least one item to the cart.');
+      return;
+    }
+
+    const roomNo = window.prompt('Please enter your room number:');
+    if (!roomNo) return;
+
+    // Prepare payload for Google Sheet
+    const payload = {
+      roomNo,
+      orderTotal: cartTotal,
+      items: cartItems.map((it) => ({
+        itemName: it.name,
+        qty: it.qty,
+        price: Number(it.price) || 0,
+        total: (Number(it.price) || 0) * it.qty,
+      })),
+    };
+
+    // Send to Google Apps Script
+    try {
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      console.error('Failed to log order to Google Sheet:', err);
+      // we still continue to WhatsApp
+    }
+
+    // Build WhatsApp message
+    const lines = payload.items
+      .map(
+        (it) =>
+          `• ${it.qty} x ${it.itemName} – ₹${it.total.toFixed(0)}`
+      )
+      .join('\n');
+
+    const message =
+      `Hi, I'd like to order from Sukhakarta Holiday Home:\n\n` +
+      `Room: ${roomNo}\n\n` +
+      `${lines}\n\n` +
+      `Total: ₹${cartTotal.toFixed(0)}`;
+
     const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
       message
     )}`;
-    if (typeof window !== 'undefined') {
-      window.open(url, '_blank');
-    }
+
+    window.open(url, '_blank');
+
+    // Optional: clear cart after placing order
+    setQuantities({});
   };
 
   return (
     <div className="page">
       <div className="card">
         {/* ---------- LOGO + HEADER ---------- */}
-        <header className="logo-header">
-          <div className="logo-header-inner">
-            {LOGO_URL && (
-              <a
-                href={WEBSITE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="logo-link"
-              >
-                <Image
-                  src={LOGO_URL}
-                  alt="Sukhakarta Holiday Home Logo"
-                  className="logo"
-                  width={120}
-                  height={52}
-                />
-              </a>
+        <div className="logo-header">
+          <a
+            href={WEBSITE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="logo-link"
+          >
+            {LOGO_URL ? (
+              <Image
+                src={LOGO_URL}
+                alt="Sukhakarta Holiday Home Logo"
+                width={120}
+                height={60}
+              />
+            ) : (
+              <span className="placeholder-logo">🏨</span>
             )}
-            <div className="titles">
-              <h1>Sukhakarta Holiday Home</h1>
-              <p className="subtitle">Digital Menu · Scan &amp; Order</p>
-            </div>
+          </a>
+
+          <div className="titles">
+            <h1>Sukhakarta Holiday Home</h1>
+            <p className="subtitle">Digital Menu · Scan & Order</p>
           </div>
-          <div className="room-selector-wrapper">
-            <div className="room-selector">
-              <label htmlFor="room-select" className="room-label">
-                Room
-              </label>
-              <select
-                id="room-select"
-                value={selectedRoom}
-                onChange={(e) => setSelectedRoom(e.target.value)}
-                className="room-select"
-              >
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-              </select>
-            </div>
-          </div>
-        </header>
+        </div>
 
         {/* ---------- CATEGORY TABS ---------- */}
         <div className="tabs">
@@ -118,7 +168,9 @@ export default function SukhakartaMenu() {
             <button
               key={cat.id}
               onClick={() => setActiveCategoryId(cat.id)}
-              className={`tab ${activeCategoryId === cat.id ? 'tab-active' : ''}`}
+              className={`tab ${
+                activeCategoryId === cat.id ? 'tab-active' : ''
+              }`}
             >
               {cat.name}
             </button>
@@ -127,7 +179,9 @@ export default function SukhakartaMenu() {
 
         {loading && <p className="info">Loading menu…</p>}
         {!loading && !categories.length && (
-          <p className="info">No categories yet. Please add some from the admin panel.</p>
+          <p className="info">
+            No categories yet. Please add some from the admin panel.
+          </p>
         )}
         {!loading && categories.length > 0 && filteredItems.length === 0 && (
           <p className="info">No items in this category yet.</p>
@@ -141,16 +195,11 @@ export default function SukhakartaMenu() {
               <article
                 key={item.id}
                 className="item"
-                style={{ animationDelay: `${0.04 * index}s` }}
+                style={{ animationDelay: `${0.04 * index}s` }} // staggered animation
               >
                 <div className="item-image">
                   {item.image_url ? (
-                    <Image
-                      src={item.image_url}
-                      alt={item.name}
-                      width={80}
-                      height={80}
-                    />
+                    <img src={item.image_url} alt={item.name} />
                   ) : (
                     <div className="image-placeholder">🍽️</div>
                   )}
@@ -193,14 +242,9 @@ export default function SukhakartaMenu() {
                           +
                         </button>
                       </div>
-
-                      <button
-                        type="button"
-                        className="order-btn"
-                        onClick={() => handleOrder(item)}
-                      >
-                        Order Now
-                      </button>
+                      {qty > 0 && (
+                        <span className="in-cart-tag">In cart</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -208,6 +252,25 @@ export default function SukhakartaMenu() {
             );
           })}
         </div>
+
+        {/* ---------- CART BAR ---------- */}
+        {cartItems.length > 0 && (
+          <div className="cart-bar">
+            <div className="cart-info">
+              <span>
+                {cartCount} item{cartCount > 1 ? 's' : ''}
+              </span>
+              <span>₹{cartTotal.toFixed(0)}</span>
+            </div>
+            <button
+              type="button"
+              className="cart-btn"
+              onClick={handlePlaceOrder}
+            >
+              Place Order
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ---------- STYLES ---------- */}
@@ -217,10 +280,15 @@ export default function SukhakartaMenu() {
           display: flex;
           justify-content: center;
           align-items: flex-start;
-          padding: 24px 12px;
-          background: radial-gradient(circle at top, #fff7e6 0%, #e5e7eb 60%, #f9fafb 100%);
-          font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
-            sans-serif;
+          padding: 24px 12px 32px;
+          background: radial-gradient(
+            circle at top,
+            #fff7e6 0%,
+            #e5e7eb 60%,
+            #f9fafb 100%
+          );
+          font-family: system-ui, -apple-system, BlinkMacSystemFont,
+            'Segoe UI', sans-serif;
         }
 
         .card {
@@ -232,107 +300,41 @@ export default function SukhakartaMenu() {
           padding: 18px 16px 24px;
           box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
           animation: floatIn 0.45s ease-out;
+          position: relative;
         }
 
-        /* Header */
+        /* Header with logo */
         .logo-header {
-          margin-bottom: 8px;
-        }
-
-        .logo-header-inner {
           display: flex;
-          flex-direction: column;
           align-items: center;
-          gap: 6px;
-          text-align: center;
+          gap: 10px;
+          margin-bottom: 10px;
         }
 
         .logo-link {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
+          text-decoration: none;
         }
 
-        .logo {
-          height: 52px;
-          width: auto;
-          object-fit: contain;
-          border-radius: 12px;
-          box-shadow: 0 8px 18px rgba(248, 113, 22, 0.35);
+        .placeholder-logo {
+          font-size: 30px;
         }
 
-        .titles h1 {
-          margin: 4px 0 2px;
+        .titles {
+          text-align: left;
+        }
+
+        h1 {
+          margin: 0;
           font-size: 20px;
+          font-weight: 700;
         }
 
         .subtitle {
-          margin: 0;
+          margin: 2px 0 4px;
           font-size: 13px;
           color: #6b7280;
         }
 
-        .room-selector-wrapper {
-          width: 100%;
-          display: flex;
-          justify-content: center;
-          margin-top: 12px;
-        }
-
-        .room-selector {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 16px;
-          background: linear-gradient(135deg, #fff7ed, #ffffff);
-          border: 2px solid #f97316;
-          border-radius: 12px;
-          box-shadow: 0 4px 12px rgba(248, 113, 22, 0.2);
-          transition: all 0.2s ease;
-        }
-
-        .room-selector:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 6px 16px rgba(248, 113, 22, 0.3);
-        }
-
-        .room-icon {
-          font-size: 18px;
-        }
-
-        .room-label {
-          font-size: 13px;
-          font-weight: 600;
-          color: #f97316;
-          white-space: nowrap;
-        }
-
-        .room-select {
-          padding: 4px 12px;
-          border-radius: 8px;
-          border: 1px solid #fed7aa;
-          background: #ffffff;
-          font-size: 14px;
-          font-weight: 600;
-          color: #f97316;
-          cursor: pointer;
-          transition: all 0.16s ease;
-          min-width: 50px;
-        }
-
-        .room-select:hover {
-          border-color: #f97316;
-          background: #fff7ed;
-        }
-
-        .room-select:focus {
-          outline: none;
-          border-color: #f97316;
-          box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
-          background: #fff7ed;
-        }
-
-        /* Tabs */
         .tabs {
           display: flex;
           gap: 8px;
@@ -361,7 +363,7 @@ export default function SukhakartaMenu() {
           transform: translateY(-2px);
         }
 
-        .tab:hover:not(.tab-active)) {
+        .tab:hover:not(.tab-active) {
           background: #f3f4f6;
           transform: translateY(-1px);
         }
@@ -400,9 +402,9 @@ export default function SukhakartaMenu() {
         }
 
         .item-image {
-          width: 80px;
-          height: 80px;
-          border-radius: 16px;
+          width: 110px;
+          height: 110px;
+          border-radius: 18px;
           overflow: hidden;
           flex-shrink: 0;
           background: #fee2e2;
@@ -413,6 +415,9 @@ export default function SukhakartaMenu() {
           height: 100%;
           object-fit: cover;
           display: block;
+          opacity: 0;
+          transform: scale(1.03);
+          animation: imgFadeIn 0.35s ease-out forwards;
         }
 
         .image-placeholder {
@@ -522,30 +527,50 @@ export default function SukhakartaMenu() {
           font-weight: 500;
         }
 
-        .order-btn {
+        .in-cart-tag {
+          font-size: 11px;
+          padding: 2px 8px;
+          border-radius: 999px;
+          background: #dcfce7;
+          color: #166534;
+        }
+
+        /* Cart bar */
+        .cart-bar {
+          position: sticky;
+          bottom: 0;
+          margin-top: 16px;
+          padding: 8px 10px;
+          border-radius: 999px;
+          background: rgba(15, 23, 42, 0.85);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          color: #e5e7eb;
+        }
+
+        .cart-info {
+          display: flex;
+          flex-direction: column;
+          font-size: 13px;
+        }
+
+        .cart-info span:last-child {
+          font-weight: 600;
+        }
+
+        .cart-btn {
           border: none;
           border-radius: 999px;
-          padding: 6px 14px;
-          font-size: 12px;
+          padding: 7px 16px;
+          font-size: 13px;
           font-weight: 600;
           background: linear-gradient(135deg, #16a34a, #22c55e);
           color: #f9fafb;
           cursor: pointer;
-          box-shadow: 0 8px 18px rgba(22, 163, 74, 0.4);
-          transition: transform 0.16s ease, box-shadow 0.16s ease,
-            filter 0.16s ease;
+          box-shadow: 0 8px 18px rgba(22, 163, 74, 0.5);
           white-space: nowrap;
-        }
-
-        .order-btn:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 12px 26px rgba(22, 163, 74, 0.55);
-          filter: brightness(1.05);
-        }
-
-        .order-btn:active {
-          transform: translateY(0);
-          box-shadow: 0 6px 14px rgba(22, 163, 74, 0.5);
         }
 
         @keyframes floatIn {
@@ -570,14 +595,25 @@ export default function SukhakartaMenu() {
           }
         }
 
+        @keyframes imgFadeIn {
+          from {
+            opacity: 0;
+            transform: scale(1.03);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
         @media (max-width: 480px) {
           .card {
             border-radius: 20px;
             padding: 14px 12px 20px;
           }
           .item-image {
-            width: 70px;
-            height: 70px;
+            width: 90px;
+            height: 90px;
           }
           .bottom-row {
             flex-direction: column;
@@ -587,21 +623,8 @@ export default function SukhakartaMenu() {
             width: 100%;
             justify-content: flex-end;
           }
-        }
-
-        @media (min-width: 640px) {
-          .logo-header-inner {
-            flex-direction: row;
-            justify-content: flex-start;
-            text-align: left;
-            gap: 12px;
-          }
-          .room-selector-wrapper {
-            margin-top: 0;
-            justify-content: flex-end;
-          }
-          .room-selector {
-            margin-left: auto;
+          .cart-bar {
+            border-radius: 16px;
           }
         }
       `}</style>
