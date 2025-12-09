@@ -6,7 +6,7 @@ import { supabase } from '../../../lib/supabaseClient';
 const LOGO_URL = '/logo.png'; // put logo file in /public/logo.png
 const WEBSITE_URL = 'https://sukhakarta-menu.vercel.app/menu/sukhakarta'; // TODO: change to your real site
 const WHATSAPP_NUMBER = '918087541496'; // your WhatsApp number
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwG1pQlJ8x4utVB3pmtW0VexiuAv0LfI7LRj63m37ZLLFrbvhv0zS_NYmgKAp1hFVQu/exec'; 
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwG1pQlJ8x4utVB3pmtW0VexiuAv0LfI7LRj63m37ZLLFrbvhv0zS_NYmgKAp1hFVQu/exec';
 // e.g. 'https://script.google.com/macros/s/AKfycbx.../exec'
 
 export default function SukhakartaMenu() {
@@ -15,6 +15,8 @@ export default function SukhakartaMenu() {
   const [activeCategoryId, setActiveCategoryId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [quantities, setQuantities] = useState({}); // item.id -> quantity
+  const [roomNo, setRoomNo] = useState(''); // room selection 1–3
+  const [roomError, setRoomError] = useState('');
 
   useEffect(() => {
     const loadData = async () => {
@@ -82,8 +84,11 @@ export default function SukhakartaMenu() {
       return;
     }
 
-    const roomNo = window.prompt('Please enter your room number:');
-    if (!roomNo) return;
+    if (!roomNo) {
+      setRoomError('Please select your room number.');
+      return;
+    }
+    setRoomError('');
 
     // Prepare payload for Google Sheet
     const payload = {
@@ -133,6 +138,7 @@ export default function SukhakartaMenu() {
 
     // Clear cart after placing order
     setQuantities({});
+    // keep roomNo as is, so they don't need to re-select for next order
   };
 
   return (
@@ -165,18 +171,20 @@ export default function SukhakartaMenu() {
         </div>
 
         {/* ---------- CATEGORY TABS ---------- */}
-        <div className="tabs">
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setActiveCategoryId(cat.id)}
-              className={`tab ${
-                activeCategoryId === cat.id ? 'tab-active' : ''
-              }`}
-            >
-              {cat.name}
-            </button>
-          ))}
+        <div className="tabs-wrapper">
+          <div className="tabs">
+            {categories.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setActiveCategoryId(cat.id)}
+                className={`tab ${
+                  activeCategoryId === cat.id ? 'tab-active' : ''
+                }`}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
         </div>
 
         {loading && <p className="info">Loading menu…</p>}
@@ -257,20 +265,44 @@ export default function SukhakartaMenu() {
 
         {/* ---------- CART BAR ---------- */}
         {cartItems.length > 0 && (
-          <div className="cart-bar">
-            <div className="cart-info">
-              <span>
-                {cartCount} item{cartCount > 1 ? 's' : ''}
-              </span>
-              <span>₹{cartTotal.toFixed(0)}</span>
+          <div className="cart-shell">
+            <div className="cart-bar">
+              <div className="cart-main">
+                <div className="cart-info">
+                  <span>
+                    {cartCount} item{cartCount > 1 ? 's' : ''}
+                  </span>
+                  <span>₹{cartTotal.toFixed(0)}</span>
+                </div>
+
+                <div className="room-select">
+                  <span className="room-label">Room</span>
+                  <div className="room-buttons">
+                    {[1, 2, 3].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        className={`room-btn ${
+                          roomNo === String(n) ? 'room-btn-active' : ''
+                        }`}
+                        onClick={() => setRoomNo(String(n))}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="cart-btn"
+                onClick={handlePlaceOrder}
+              >
+                Place Order
+              </button>
             </div>
-            <button
-              type="button"
-              className="cart-btn"
-              onClick={handlePlaceOrder}
-            >
-              Place Order
-            </button>
+            {roomError && <p className="room-error">{roomError}</p>}
           </div>
         )}
       </div>
@@ -282,7 +314,7 @@ export default function SukhakartaMenu() {
           display: flex;
           justify-content: center;
           align-items: flex-start;
-          padding: 24px 12px 32px;
+          padding: 28px 12px 32px; /* more top padding so tabs don't look cut */
           background: radial-gradient(
             circle at top,
             #fff7e6 0%,
@@ -300,6 +332,7 @@ export default function SukhakartaMenu() {
           backdrop-filter: blur(16px);
           border-radius: 24px;
           padding: 18px 16px 24px;
+          margin-top: 4px; /* small margin from top to avoid cut look */
           box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
           animation: floatIn 0.45s ease-out;
           position: relative;
@@ -337,12 +370,24 @@ export default function SukhakartaMenu() {
           color: #6b7280;
         }
 
+        .tabs-wrapper {
+          margin: 4px -4px 14px;
+        }
+
         .tabs {
           display: flex;
           gap: 8px;
           overflow-x: auto;
-          padding-bottom: 4px;
-          margin: 10px -2px 14px;
+          padding: 4px 2px 6px;
+        }
+
+        .tabs::-webkit-scrollbar {
+          height: 3px;
+        }
+
+        .tabs::-webkit-scrollbar-thumb {
+          background: #e5e7eb;
+          border-radius: 999px;
         }
 
         .tab {
@@ -537,14 +582,17 @@ export default function SukhakartaMenu() {
           color: #166534;
         }
 
-        /* Cart bar */
+        /* Cart area */
+        .cart-shell {
+          margin-top: 16px;
+        }
+
         .cart-bar {
           position: sticky;
           bottom: 0;
-          margin-top: 16px;
           padding: 8px 10px;
-          border-radius: 999px;
-          background: rgba(15, 23, 42, 0.85);
+          border-radius: 18px;
+          background: rgba(15, 23, 42, 0.9);
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -552,14 +600,53 @@ export default function SukhakartaMenu() {
           color: #e5e7eb;
         }
 
-        .cart-info {
+        .cart-main {
           display: flex;
           flex-direction: column;
+          gap: 4px;
+        }
+
+        .cart-info {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
           font-size: 13px;
         }
 
         .cart-info span:last-child {
           font-weight: 600;
+        }
+
+        .room-select {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12px;
+        }
+
+        .room-label {
+          opacity: 0.9;
+        }
+
+        .room-buttons {
+          display: inline-flex;
+          gap: 4px;
+        }
+
+        .room-btn {
+          border-radius: 999px;
+          border: 1px solid #4b5563;
+          padding: 2px 8px;
+          font-size: 11px;
+          background: transparent;
+          color: #e5e7eb;
+          cursor: pointer;
+        }
+
+        .room-btn-active {
+          background: #22c55e;
+          border-color: #22c55e;
+          color: #0f172a;
         }
 
         .cart-btn {
@@ -573,6 +660,12 @@ export default function SukhakartaMenu() {
           cursor: pointer;
           box-shadow: 0 8px 18px rgba(22, 163, 74, 0.5);
           white-space: nowrap;
+        }
+
+        .room-error {
+          margin: 4px 4px 0;
+          font-size: 11px;
+          color: #fecaca;
         }
 
         @keyframes floatIn {
@@ -626,7 +719,17 @@ export default function SukhakartaMenu() {
             justify-content: flex-end;
           }
           .cart-bar {
+            flex-direction: column;
+            align-items: stretch;
             border-radius: 16px;
+          }
+          .cart-main {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .cart-btn {
+            width: 100%;
+            text-align: center;
           }
         }
       `}</style>
