@@ -81,11 +81,10 @@ export default function SukhakartaMenu() {
       alert('Please add at least one item to the cart.');
       return;
     }
-
+  
     const roomNo = window.prompt('Please enter your room number:');
     if (!roomNo) return;
-
-    // Prepare payload for Google Sheet
+  
     const payload = {
       roomNo,
       orderTotal: cartTotal,
@@ -96,43 +95,37 @@ export default function SukhakartaMenu() {
         total: (Number(it.price) || 0) * it.qty,
       })),
     };
-
-    // Send to Google Apps Script
+  
     try {
       await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
         body: JSON.stringify(payload),
       });
     } catch (err) {
-      console.error('Failed to log order to Google Sheet:', err);
-      // we still continue to WhatsApp
+      console.error('Failed to log order:', err);
     }
-
-    // Build WhatsApp message
+  
     const lines = payload.items
-      .map(
-        (it) =>
-          `• ${it.qty} x ${it.itemName} – ₹${it.total.toFixed(0)}`
-      )
+      .map((it) => `• ${it.qty} x ${it.itemName} – ₹${it.total.toFixed(0)}`)
       .join('\n');
-
+  
     const message =
       `Hi, I'd like to order from Sukhakarta Holiday Home:\n\n` +
       `Room: ${roomNo}\n\n` +
       `${lines}\n\n` +
       `Total: ₹${cartTotal.toFixed(0)}`;
-
+  
     const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
       message
     )}`;
-
+  
     window.open(url, '_blank');
-
-    // Optional: clear cart after placing order
     setQuantities({});
   };
-
   return (
     <div className="page">
       <div className="card">
