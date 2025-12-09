@@ -77,69 +77,69 @@ export default function SukhakartaMenu() {
     0
   );
 
-  const handlePlaceOrder = async () => {
-    if (typeof window === 'undefined') return;
-    if (!cartItems.length) {
-      alert('Please add at least one item to the cart.');
-      return;
-    }
+ const handlePlaceOrder = () => {
+  if (typeof window === 'undefined') return;
+  if (!cartItems.length) {
+    alert('Please add at least one item to the cart.');
+    return;
+  }
 
-    if (!roomNo) {
-      setRoomError('Please select your room number.');
-      return;
-    }
-    setRoomError('');
+  if (!roomNo) {
+    setRoomError('Please select your room number.');
+    return;
+  }
+  setRoomError('');
 
-    // Prepare payload for Google Sheet
-    const payload = {
-      roomNo,
-      orderTotal: cartTotal,
-      items: cartItems.map((it) => ({
-        itemName: it.name,
-        qty: it.qty,
-        price: Number(it.price) || 0,
-        total: (Number(it.price) || 0) * it.qty,
-      })),
-    };
-
-    // Send to Google Apps Script (CORS-safe)
-    try {
-      await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify(payload),
-      });
-    } catch (err) {
-      console.error('Failed to log order to Google Sheet:', err);
-      // still continue to WhatsApp
-    }
-
-    // Build WhatsApp message
-    const lines = payload.items
-      .map(
-        (it) => `• ${it.qty} x ${it.itemName} – ₹${it.total.toFixed(0)}`
-      )
-      .join('\n');
-
-    const message =
-      `Hi, I'd like to order from Sukhakarta Holiday Home:\n\n` +
-      `Room: ${roomNo}\n\n` +
-      `${lines}\n\n` +
-      `Total: ₹${cartTotal.toFixed(0)}`;
-
-    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
-      message
-    )}`;
-
-    window.open(url, '_blank');
-
-    // Clear cart after placing order
-    setQuantities({});
-    // keep roomNo as is, so they don't need to re-select for next order
+  // Prepare payload for Google Sheet
+  const payload = {
+    roomNo,
+    orderTotal: cartTotal,
+    items: cartItems.map((it) => ({
+      itemName: it.name,
+      qty: it.qty,
+      price: Number(it.price) || 0,
+      total: (Number(it.price) || 0) * it.qty,
+    })),
   };
+
+  // Build WhatsApp message
+  const lines = payload.items
+    .map(
+      (it) => `• ${it.qty} x ${it.itemName} – ₹${it.total.toFixed(0)}`
+    )
+    .join('\n');
+
+  const message =
+    `Hi, I'd like to order from Sukhakarta Holiday Home:\n\n` +
+    `Room: ${roomNo}\n\n` +
+    `${lines}\n\n` +
+    `Total: ₹${cartTotal.toFixed(0)}`;
+
+  const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
+    message
+  )}`;
+
+  // 🚀 Open WhatsApp immediately
+  window.open(url, '_blank');
+
+  // 🔄 Fire-and-forget: log to Google Sheet in background
+  try {
+    fetch(GOOGLE_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.error('Failed to log order to Google Sheet:', err);
+  }
+
+  // Clear cart after placing order
+  setQuantities({});
+  // keep roomNo as is
+};
 
   return (
     <div className="page">
