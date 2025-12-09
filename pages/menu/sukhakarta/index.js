@@ -6,7 +6,7 @@ import { supabase } from '../../../lib/supabaseClient';
 const LOGO_URL = '/logo.png'; // put logo file in /public/logo.png
 const WEBSITE_URL = 'https://sukhakarta-menu.vercel.app/menu/sukhakarta'; // TODO: change to your real site
 const WHATSAPP_NUMBER = '918087541496'; // your WhatsApp number
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxCsG4qfcHe1n0aY4J6j-mRgY7CnmoKUVNOghsC904GmnCvc0TWigpgSCp-GZ9u4QLl/exec'; 
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwG1pQlJ8x4utVB3pmtW0VexiuAv0LfI7LRj63m37ZLLFrbvhv0zS_NYmgKAp1hFVQu/exec'; 
 // e.g. 'https://script.google.com/macros/s/AKfycbx.../exec'
 
 export default function SukhakartaMenu() {
@@ -97,23 +97,25 @@ export default function SukhakartaMenu() {
       })),
     };
 
-    // Send to Google Apps Script
+    // Send to Google Apps Script (CORS-safe)
     try {
       await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
         body: JSON.stringify(payload),
       });
     } catch (err) {
       console.error('Failed to log order to Google Sheet:', err);
-      // we still continue to WhatsApp
+      // still continue to WhatsApp
     }
 
     // Build WhatsApp message
     const lines = payload.items
       .map(
-        (it) =>
-          `• ${it.qty} x ${it.itemName} – ₹${it.total.toFixed(0)}`
+        (it) => `• ${it.qty} x ${it.itemName} – ₹${it.total.toFixed(0)}`
       )
       .join('\n');
 
@@ -129,7 +131,7 @@ export default function SukhakartaMenu() {
 
     window.open(url, '_blank');
 
-    // Optional: clear cart after placing order
+    // Clear cart after placing order
     setQuantities({});
   };
 
