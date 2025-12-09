@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { supabase } from '../../../lib/supabaseClient';
 
 const LOGO_URL = '/logo.png'; // put logo file in /public/logo.png
-const WEBSITE_URL = 'https://your-website.com'; // TODO: change to your real site
+const WEBSITE_URL = 'https://sukhakarta-menu.vercel.app/menu/sukhakarta'; // TODO: change to your real site
 const WHATSAPP_NUMBER = '918087541496'; // TODO: change to your real WhatsApp number
 
 export default function SukhakartaMenu() {
