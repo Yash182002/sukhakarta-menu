@@ -25,8 +25,20 @@ export default function AdminPanel() {
     image_url: '',
   });
   const [newItemFile, setNewItemFile] = useState(null);
-  const [uploading, setUploading] = useState(false);
 
+  // Edit item states
+  const [editingItemId, setEditingItemId] = useState(null);
+  const [editedItem, setEditedItem] = useState({
+    name: '',
+    description: '',
+    price: '',
+    veg: true,
+    category_id: '',
+    image_url: '',
+  });
+  const [editedItemFile, setEditedItemFile] = useState(null);
+
+  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Category edit state
@@ -56,7 +68,9 @@ export default function AdminPanel() {
     );
 
     return () => {
-      listener.subscription.unsubscribe();
+      try {
+        listener.subscription.unsubscribe();
+      } catch (e) {}
     };
   }, []);
 
@@ -258,14 +272,11 @@ export default function AdminPanel() {
     });
 
   // Upload image file to Supabase Storage (if selected)
-  const uploadImageIfNeeded = async () => {
-    if (!newItemFile) return null; // no file selected
-
+  const uploadImageToStorage = async (file) => {
+    if (!file) return null;
     try {
-      setUploading(true);
-
       // 1) Compress image
-      const compressedBlob = await compressImage(newItemFile, 800, 0.75);
+      const compressedBlob = await compressImage(file, 800, 0.75);
 
       // 2) Unique path/name
       const fileName = `${Date.now()}-${Math.random()
@@ -282,9 +293,7 @@ export default function AdminPanel() {
 
       if (uploadError) {
         console.error(uploadError);
-        alert('Image upload failed: ' + uploadError.message);
-        setUploading(false);
-        return null;
+        throw new Error('Image upload failed: ' + uploadError.message);
       }
 
       // 4) Get public URL
@@ -292,49 +301,79 @@ export default function AdminPanel() {
         data: { publicUrl },
       } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
 
-      setUploading(false);
       return publicUrl;
     } catch (err) {
       console.error(err);
-      alert('Unexpected error while uploading image.');
-      setUploading(false);
-      return null;
+      throw err;
     }
   };
 
+  // Add item
   const addItem = async (e) => {
     e.preventDefault();
     if (!newItem.name.trim()) return;
 
     setUploading(true);
 
-    // 1) Upload file if present
-    const uploadedUrl = await uploadImageIfNeeded();
+    try {
+      // upload image if present
+      const uploadedUrl = newItemFile ? await uploadImageToStorage(newItemFile) : null;
+      const finalImageUrl = uploadedUrl || (newItem.image_url.trim() || null);
 
-    // 2) If no file, fall back to manual URL (if provided)
-    const finalImageUrl =
-      uploadedUrl || (newItem.image_url.trim() || null);
+      const payload = {
+        name: newItem.name.trim(),
+        description: newItem.description || null,
+        price: newItem.price ? Number(newItem.price) : null,
+        veg: newItem.veg,
+        category_id: newItem.category_id || null,
+        image_url: finalImageUrl,
+        available: true,
+      };
 
-    const payload = {
-      name: newItem.name.trim(),
-      description: newItem.description || null,
-      price: newItem.price ? Number(newItem.price) : null,
-      veg: newItem.veg,
-      category_id: newItem.category_id || null,
-      image_url: finalImageUrl,
-      available: true,
-    };
+      const { error } = await supabase.from('menu_items').insert(payload);
+      if (error) {
+        alert(error.message);
+        setUploading(false);
+        return;
+      }
 
-    const { error } = await supabase.from('menu_items').insert(payload);
-    setUploading(false);
-
-    if (error) {
-      alert(error.message);
-      return;
+      // reset
+      setNewItem({
+        name: '',
+        description: '',
+        price: '',
+        veg: true,
+        category_id: '',
+        image_url: '',
+      });
+      setNewItemFile(null);
+      await loadData();
+    } catch (err) {
+      alert(err.message || 'Failed to add item');
+    } finally {
+      setUploading(false);
     }
+  };
 
-    // reset form
-    setNewItem({
+  // Start editing an existing item — prefill editedItem
+  const startEditItem = (item) => {
+    setEditingItemId(item.id);
+    setEditedItem({
+      name: item.name || '',
+      description: item.description || '',
+      price: item.price != null ? String(item.price) : '',
+      veg: !!item.veg,
+      category_id: item.category_id || '',
+      image_url: item.image_url || '',
+    });
+    setEditedItemFile(null);
+    // scroll to form (optional)
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelEditItem = () => {
+    setEditingItemId(null);
+    setEditedItem({
       name: '',
       description: '',
       price: '',
@@ -342,8 +381,49 @@ export default function AdminPanel() {
       category_id: '',
       image_url: '',
     });
-    setNewItemFile(null);
-    await loadData();
+    setEditedItemFile(null);
+  };
+
+  const saveItemEdit = async (e) => {
+    e && e.preventDefault && e.preventDefault();
+    if (!editedItem.name.trim()) {
+      alert('Item name required');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      // if a new file is selected for edit, upload it and use that URL.
+      const uploadedUrl = editedItemFile ? await uploadImageToStorage(editedItemFile) : null;
+      const finalImageUrl = uploadedUrl || (editedItem.image_url.trim() || null);
+
+      const payload = {
+        name: editedItem.name.trim(),
+        description: editedItem.description || null,
+        price: editedItem.price ? Number(editedItem.price) : null,
+        veg: editedItem.veg,
+        category_id: editedItem.category_id || null,
+        image_url: finalImageUrl,
+      };
+
+      const { error } = await supabase
+        .from('menu_items')
+        .update(payload)
+        .eq('id', editingItemId);
+
+      if (error) {
+        alert(error.message);
+        setUploading(false);
+        return;
+      }
+
+      cancelEditItem();
+      await loadData();
+    } catch (err) {
+      alert(err.message || 'Failed to update item');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const toggleAvailable = async (item) => {
@@ -601,33 +681,47 @@ export default function AdminPanel() {
               )}
             </section>
 
-            {/* Add Item */}
+            {/* Add / Edit Item */}
             <section className="panel">
               <div className="panel-header">
-                <h3>Add / Edit Items</h3>
+                <h3>{editingItemId ? 'Edit Item' : 'Add Item'}</h3>
               </div>
-              <form onSubmit={addItem} className="grid">
+
+              <form
+                onSubmit={editingItemId ? saveItemEdit : addItem}
+                className="grid"
+                style={{ alignItems: 'start' }}
+              >
+                {/* Left column */}
                 <input
                   type="text"
                   placeholder="Item name"
-                  value={newItem.name}
+                  value={editingItemId ? editedItem.name : newItem.name}
                   onChange={(e) =>
-                    setNewItem({ ...newItem, name: e.target.value })
+                    editingItemId
+                      ? setEditedItem({ ...editedItem, name: e.target.value })
+                      : setNewItem({ ...newItem, name: e.target.value })
                   }
                   required
                 />
+
                 <input
                   type="number"
                   placeholder="Price (₹)"
-                  value={newItem.price}
+                  value={editingItemId ? editedItem.price : newItem.price}
                   onChange={(e) =>
-                    setNewItem({ ...newItem, price: e.target.value })
+                    editingItemId
+                      ? setEditedItem({ ...editedItem, price: e.target.value })
+                      : setNewItem({ ...newItem, price: e.target.value })
                   }
                 />
+
                 <select
-                  value={newItem.category_id}
+                  value={editingItemId ? editedItem.category_id : newItem.category_id}
                   onChange={(e) =>
-                    setNewItem({ ...newItem, category_id: e.target.value })
+                    editingItemId
+                      ? setEditedItem({ ...editedItem, category_id: e.target.value })
+                      : setNewItem({ ...newItem, category_id: e.target.value })
                   }
                 >
                   <option value="">Select category</option>
@@ -637,64 +731,99 @@ export default function AdminPanel() {
                     </option>
                   ))}
                 </select>
+
                 <select
-                  value={newItem.veg ? 'veg' : 'nonveg'}
+                  value={editingItemId ? (editedItem.veg ? 'veg' : 'nonveg') : (newItem.veg ? 'veg' : 'nonveg')}
                   onChange={(e) =>
-                    setNewItem({
-                      ...newItem,
-                      veg: e.target.value === 'veg',
-                    })
+                    editingItemId
+                      ? setEditedItem({ ...editedItem, veg: e.target.value === 'veg' })
+                      : setNewItem({ ...newItem, veg: e.target.value === 'veg' })
                   }
                 >
                   <option value="veg">Veg</option>
                   <option value="nonveg">Non-Veg</option>
                 </select>
 
-                {/* File upload */}
+                {/* File upload (wide) */}
                 <div className="file-wrapper wide">
                   <label className="file-label">
-                    Dish Image (upload)
+                    {editingItemId ? 'Dish Image (replace)' : 'Dish Image (upload)'}
                     <input
                       type="file"
                       accept="image/*"
                       onChange={(e) => {
                         const file = e.target.files && e.target.files[0];
-                        setNewItemFile(file || null);
+                        if (editingItemId) setEditedItemFile(file || null);
+                        else setNewItemFile(file || null);
                       }}
                     />
                   </label>
-                  {newItemFile && (
-                    <p className="small-info">Selected: {newItemFile.name}</p>
+
+                  {editingItemId ? (
+                    <>
+                      {editedItemFile ? (
+                        <p className="small-info">Selected: {editedItemFile.name}</p>
+                      ) : editedItem.image_url ? (
+                        <p className="small-info">Current: (will keep existing if no file selected)</p>
+                      ) : (
+                        <p className="small-info">No image set</p>
+                      )}
+                    </>
+                  ) : (
+                    newItemFile && <p className="small-info">Selected: {newItemFile.name}</p>
                   )}
                 </div>
 
-                {/* URL fallback */}
+                {/* URL fallback (wide) */}
                 <input
                   type="text"
                   placeholder="OR Image URL (optional)"
-                  value={newItem.image_url}
+                  value={editingItemId ? editedItem.image_url : newItem.image_url}
                   onChange={(e) =>
-                    setNewItem({ ...newItem, image_url: e.target.value })
+                    editingItemId
+                      ? setEditedItem({ ...editedItem, image_url: e.target.value })
+                      : setNewItem({ ...newItem, image_url: e.target.value })
                   }
                   className="wide"
                 />
 
                 <textarea
                   placeholder="Description (optional)"
-                  value={newItem.description}
+                  value={editingItemId ? editedItem.description : newItem.description}
                   onChange={(e) =>
-                    setNewItem({ ...newItem, description: e.target.value })
+                    editingItemId
+                      ? setEditedItem({ ...editedItem, description: e.target.value })
+                      : setNewItem({ ...newItem, description: e.target.value })
                   }
                   className="wide"
                 />
 
-                <button
-                  type="submit"
-                  className="wide primary-btn"
-                  disabled={uploading}
-                >
-                  {uploading ? 'Saving…' : 'Save Item'}
-                </button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }} className="wide">
+                  <button
+                    type="submit"
+                    className="primary-btn"
+                    disabled={uploading}
+                  >
+                    {uploading ? (editingItemId ? 'Updating…' : 'Saving…') : (editingItemId ? 'Update Item' : 'Save Item')}
+                  </button>
+
+                  {editingItemId && (
+                    <button
+                      type="button"
+                      className="small-btn"
+                      onClick={cancelEditItem}
+                    >
+                      Cancel
+                    </button>
+                  )}
+
+                  {/* extra small helper when adding */}
+                  {!editingItemId && (
+                    <div style={{ marginLeft: 'auto', fontSize: 12, color: '#6b7280' }}>
+                      Tip: use image upload OR URL.
+                    </div>
+                  )}
+                </div>
               </form>
             </section>
 
@@ -748,6 +877,14 @@ export default function AdminPanel() {
                             <td>{item.veg ? 'Veg' : 'Non-Veg'}</td>
                             <td>{item.available ? 'Yes' : 'No'}</td>
                             <td>
+                              <button
+                                className="small-btn"
+                                type="button"
+                                onClick={() => startEditItem(item)}
+                              >
+                                Edit
+                              </button>
+
                               <button
                                 className="small-btn"
                                 type="button"
@@ -825,10 +962,12 @@ export default function AdminPanel() {
           }
           .panel {
             margin-top: 12px;
-            padding: 10px 10px 12px;
+            padding: 12px;
             border-radius: 16px;
             background: #f9fafb;
             border: 1px solid #e5e7eb;
+            box-sizing: border-box;
+            overflow: visible;
           }
           .panel-header {
             display: flex;
@@ -858,21 +997,25 @@ export default function AdminPanel() {
           textarea {
             border-radius: 10px;
             border: 1px solid #d1d5db;
-            padding: 7px 9px;
+            padding: 8px 10px;
             font-size: 13px;
             width: 100%;
+            box-sizing: border-box;
           }
           textarea {
-            min-height: 60px;
+            min-height: 70px;
             resize: vertical;
           }
+          /* Use a robust grid for add/edit form to avoid overlapping */
           .grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 8px;
+            gap: 10px;
+            align-items: start;
           }
+          /* wide elements span full width */
           .grid .wide {
-            grid-column: 1 / span 2;
+            grid-column: 1 / -1;
           }
           button {
             cursor: pointer;
@@ -881,7 +1024,7 @@ export default function AdminPanel() {
           .primary-btn {
             border-radius: 999px;
             border: none;
-            padding: 7px 14px;
+            padding: 8px 14px;
             font-size: 13px;
             font-weight: 600;
             background: linear-gradient(135deg, #22c55e, #16a34a);
@@ -894,23 +1037,23 @@ export default function AdminPanel() {
           .file-wrapper {
             display: flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 6px;
           }
           .file-label {
             font-size: 12px;
             display: inline-flex;
             flex-direction: column;
-            gap: 4px;
+            gap: 6px;
           }
           .file-label input[type='file'] {
-            padding: 4px;
-            border-radius: 999px;
+            padding: 6px;
+            border-radius: 10px;
             border: 1px dashed #d1d5db;
             background: #f3f4f6;
             font-size: 12px;
           }
           .small-info {
-            font-size: 11px;
+            font-size: 12px;
             color: #6b7280;
           }
           .category-list {
@@ -923,7 +1066,7 @@ export default function AdminPanel() {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 6px 10px;
+            padding: 8px 10px;
             background: #ffffff;
             border: 1px solid #e5e7eb;
             border-radius: 10px;
@@ -950,11 +1093,11 @@ export default function AdminPanel() {
           table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 12px;
+            font-size: 13px;
           }
           th,
           td {
-            padding: 6px;
+            padding: 8px;
             border-bottom: 1px solid #e5e7eb;
             text-align: left;
             vertical-align: middle;
@@ -963,26 +1106,26 @@ export default function AdminPanel() {
             background: #f3f4f6;
           }
           .thumb {
-            width: 44px;
+            width: 56px;
             height: 44px;
-            border-radius: 10px;
+            border-radius: 8px;
             object-fit: cover;
           }
           .thumb-placeholder {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 44px;
+            width: 56px;
             height: 44px;
-            border-radius: 10px;
+            border-radius: 8px;
             background: #fee2e2;
           }
           .small-btn {
             border: none;
             border-radius: 999px;
-            padding: 4px 8px;
-            font-size: 11px;
-            margin-right: 4px;
+            padding: 6px 10px;
+            font-size: 12px;
+            margin-right: 6px;
             background: #e5e7eb;
           }
           .small-btn.danger {
@@ -993,7 +1136,7 @@ export default function AdminPanel() {
             background: linear-gradient(135deg, #16a34a, #22c55e);
             color: #fff;
             border: none;
-            padding: 7px 12px;
+            padding: 8px 14px;
             border-radius: 999px;
           }
           @keyframes fadeIn {
@@ -1017,10 +1160,12 @@ export default function AdminPanel() {
               text-align: left;
             }
           }
-          @media (max-width: 480px) {
-            .admin-card {
-              padding: 14px 10px 18px;
-              border-radius: 18px;
+          @media (max-width: 640px) {
+            .grid {
+              grid-template-columns: 1fr;
+            }
+            .table-wrap {
+              font-size: 12px;
             }
           }
         `}</style>
