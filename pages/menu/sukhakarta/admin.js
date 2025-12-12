@@ -13,6 +13,7 @@ export default function AdminPanel() {
 
   const [categories, setCategories] = useState([]);
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategorySort, setNewCategorySort] = useState(0);
 
   const [items, setItems] = useState([]);
   const [newItem, setNewItem] = useState({
@@ -28,22 +29,11 @@ export default function AdminPanel() {
 
   const [loading, setLoading] = useState(true);
 
-  const loadData = async () => {
-    setLoading(true);
-    const { data: cats } = await supabase
-      .from('categories')
-      .select('*')
-      .order('sort_order', { ascending: true });
-
-    const { data: menu } = await supabase
-      .from('menu_items')
-      .select('*')
-      .order('created_at', { ascending: true });
-
-    setCategories(cats || []);
-    setItems(menu || []);
-    setLoading(false);
-  };
+  // Category edit state
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
+  const [editedCategoryName, setEditedCategoryName] = useState('');
+  const [editedCategorySort, setEditedCategorySort] = useState(0);
+  const [categoryBusy, setCategoryBusy] = useState(false);
 
   useEffect(() => {
     const getSession = async () => {
@@ -69,6 +59,26 @@ export default function AdminPanel() {
       listener.subscription.unsubscribe();
     };
   }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    const { data: cats, error: catErr } = await supabase
+      .from('categories')
+      .select('*')
+      .order('sort_order', { ascending: true });
+
+    const { data: menu, error: menuErr } = await supabase
+      .from('menu_items')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (catErr) console.error('categories load error', catErr);
+    if (menuErr) console.error('menu load error', menuErr);
+
+    setCategories(cats || []);
+    setItems(menu || []);
+    setLoading(false);
+  };
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -100,19 +110,35 @@ export default function AdminPanel() {
     setItems([]);
   };
 
+  // Create category (supports optional sort order)
   const addCategory = async (e) => {
     e.preventDefault();
     if (!newCategoryName.trim()) return;
 
-    const { error } = await supabase
-      .from('categories')
-      .insert({ name: newCategoryName.trim() });
-    if (error) {
-      alert(error.message);
-      return;
+    setCategoryBusy(true);
+    try {
+      const payload = {
+        name: newCategoryName.trim(),
+      };
+      if (newCategorySort !== '' && newCategorySort != null) {
+        payload.sort_order = Number(newCategorySort) || 0;
+      }
+
+      const { error } = await supabase.from('categories').insert(payload);
+      if (error) {
+        alert(error.message);
+        setCategoryBusy(false);
+        return;
+      }
+      setNewCategoryName('');
+      setNewCategorySort(0);
+      await loadData();
+    } catch (err) {
+      console.error('addCategory error', err);
+      alert('Failed to add category');
+    } finally {
+      setCategoryBusy(false);
     }
-    setNewCategoryName('');
-    await loadData();
   };
 
   const deleteCategory = async (id) => {
@@ -123,18 +149,113 @@ export default function AdminPanel() {
     )
       return;
 
-    const { error } = await supabase
-      .from('categories')
-      .delete()
-      .eq('id', id);
+    try {
+      const { error } = await supabase.from('categories').delete().eq('id', id);
 
-    if (error) {
-      alert(error.message);
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      await loadData();
+    } catch (err) {
+      console.error('deleteCategory error', err);
+      alert('Delete failed');
+    }
+  };
+
+  // ---------- Category Edit helpers ----------
+  const startEditCategory = (cat) => {
+    setEditingCategoryId(cat.id);
+    setEditedCategoryName(cat.name || '');
+    setEditedCategorySort(cat.sort_order ?? 0);
+  };
+
+  const cancelEditCategory = () => {
+    setEditingCategoryId(null);
+    setEditedCategoryName('');
+    setEditedCategorySort(0);
+  };
+
+  const saveCategoryEdit = async () => {
+    if (!editedCategoryName.trim()) {
+      alert('Category name required');
       return;
     }
+    setCategoryBusy(true);
+    try {
+      const { error } = await supabase
+        .from('categories')
+        .update({
+          name: editedCategoryName.trim(),
+          sort_order: Number(editedCategorySort) || 0,
+        })
+        .eq('id', editingCategoryId);
 
-    await loadData();
+      if (error) {
+        alert(error.message);
+        setCategoryBusy(false);
+        return;
+      }
+
+      cancelEditCategory();
+      await loadData();
+    } catch (err) {
+      console.error('saveCategoryEdit error', err);
+      alert('Update failed');
+    } finally {
+      setCategoryBusy(false);
+    }
   };
+
+  // Compress image on the client before uploading to Supabase
+  const compressImage = (file, maxSize = 800, quality = 0.75) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let { width, height } = img;
+
+          // maintain aspect ratio, limit to maxSize x maxSize
+          if (width > height) {
+            if (width > maxSize) {
+              height = (height * maxSize) / width;
+              width = maxSize;
+            }
+          } else {
+            if (height > maxSize) {
+              width = (width * maxSize) / height;
+              height = maxSize;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error('Image compression failed'));
+              } else {
+                resolve(blob);
+              }
+            },
+            'image/jpeg',
+            quality
+          );
+        };
+        img.onerror = (err) => reject(err);
+        img.src = event.target.result;
+      };
+
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
 
   // Upload image file to Supabase Storage (if selected)
   const uploadImageIfNeeded = async () => {
@@ -142,15 +263,22 @@ export default function AdminPanel() {
 
     try {
       setUploading(true);
-      const fileExt = newItemFile.name.split('.').pop();
+
+      // 1) Compress image
+      const compressedBlob = await compressImage(newItemFile, 800, 0.75);
+
+      // 2) Unique path/name
       const fileName = `${Date.now()}-${Math.random()
         .toString(36)
-        .substring(2, 8)}.${fileExt}`;
+        .substring(2, 8)}.jpg`;
       const filePath = `dishes/${fileName}`;
 
+      // 3) Upload
       const { error: uploadError } = await supabase.storage
         .from(STORAGE_BUCKET)
-        .upload(filePath, newItemFile);
+        .upload(filePath, compressedBlob, {
+          contentType: 'image/jpeg',
+        });
 
       if (uploadError) {
         console.error(uploadError);
@@ -159,6 +287,7 @@ export default function AdminPanel() {
         return null;
       }
 
+      // 4) Get public URL
       const {
         data: { publicUrl },
       } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(filePath);
@@ -396,27 +525,80 @@ export default function AdminPanel() {
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
                 />
-                <button type="submit">Add</button>
+                <input
+                  type="number"
+                  placeholder="Sort order (optional)"
+                  value={newCategorySort}
+                  onChange={(e) => setNewCategorySort(e.target.value)}
+                  style={{ width: 140 }}
+                />
+                <button type="submit" disabled={categoryBusy}>
+                  {categoryBusy ? 'Adding…' : 'Add'}
+                </button>
               </form>
 
               <div className="category-list">
                 {categories.length ? (
                   categories.map((cat) => (
                     <div key={cat.id} className="category-row">
-                      <span className="cat-name">{cat.name}</span>
-                      <button
-                        className="small-btn danger"
-                        type="button"
-                        onClick={() => deleteCategory(cat.id)}
-                      >
-                        Delete
-                      </button>
+                      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <span className="cat-name">{cat.name}</span>
+                        <span className="cat-meta">Sort: {cat.sort_order ?? 0}</span>
+                      </div>
+
+                      <div>
+                        <button
+                          className="small-btn"
+                          type="button"
+                          onClick={() => startEditCategory(cat)}
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          className="small-btn danger"
+                          type="button"
+                          onClick={() => deleteCategory(cat.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   ))
                 ) : (
                   <p className="info">No categories yet.</p>
                 )}
               </div>
+
+              {/* Inline category editor */}
+              {editingCategoryId && (
+                <div className="edit-category-box">
+                  <h4>Edit Category</h4>
+                  <div className="row" style={{ alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      value={editedCategoryName}
+                      onChange={(e) => setEditedCategoryName(e.target.value)}
+                    />
+                    <input
+                      type="number"
+                      value={editedCategorySort}
+                      onChange={(e) => setEditedCategorySort(e.target.value)}
+                      style={{ width: 140 }}
+                    />
+                    <button
+                      onClick={saveCategoryEdit}
+                      disabled={categoryBusy}
+                      className="primary-btn"
+                    >
+                      {categoryBusy ? 'Saving…' : 'Save'}
+                    </button>
+                    <button onClick={cancelEditCategory} className="small-btn">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </section>
 
             {/* Add Item */}
@@ -482,9 +664,7 @@ export default function AdminPanel() {
                     />
                   </label>
                   {newItemFile && (
-                    <p className="small-info">
-                      Selected: {newItemFile.name}
-                    </p>
+                    <p className="small-info">Selected: {newItemFile.name}</p>
                   )}
                 </div>
 
@@ -644,13 +824,11 @@ export default function AdminPanel() {
             cursor: pointer;
           }
           .panel {
-            margin-top: 16px;
-            padding: 14px 12px 16px;
+            margin-top: 12px;
+            padding: 10px 10px 12px;
             border-radius: 16px;
             background: #f9fafb;
             border: 1px solid #e5e7eb;
-            position: relative;
-            z-index: 1;
           }
           .panel-header {
             display: flex;
@@ -683,9 +861,6 @@ export default function AdminPanel() {
             padding: 7px 9px;
             font-size: 13px;
             width: 100%;
-            box-sizing: border-box;
-            position: relative;
-            z-index: 1;
           }
           textarea {
             min-height: 60px;
@@ -694,19 +869,10 @@ export default function AdminPanel() {
           .grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 10px;
-            position: relative;
+            gap: 8px;
           }
           .grid .wide {
-            grid-column: 1 / -1;
-          }
-          @media (max-width: 640px) {
-            .grid {
-              grid-template-columns: 1fr;
-            }
-            .grid .wide {
-              grid-column: 1;
-            }
+            grid-column: 1 / span 2;
           }
           button {
             cursor: pointer;
@@ -729,8 +895,6 @@ export default function AdminPanel() {
             display: flex;
             flex-direction: column;
             gap: 4px;
-            position: relative;
-            z-index: 1;
           }
           .file-label {
             font-size: 12px;
@@ -767,6 +931,17 @@ export default function AdminPanel() {
           .cat-name {
             font-size: 13px;
             font-weight: 500;
+          }
+          .cat-meta {
+            font-size: 12px;
+            color: #6b7280;
+          }
+          .edit-category-box {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 10px;
+            background: #fff;
+            border: 1px solid #eef2f6;
           }
           .table-wrap {
             margin-top: 6px;
@@ -813,6 +988,13 @@ export default function AdminPanel() {
           .small-btn.danger {
             background: #fee2e2;
             color: #b91c1c;
+          }
+          .primary-btn {
+            background: linear-gradient(135deg, #16a34a, #22c55e);
+            color: #fff;
+            border: none;
+            padding: 7px 12px;
+            border-radius: 999px;
           }
           @keyframes fadeIn {
             from {
