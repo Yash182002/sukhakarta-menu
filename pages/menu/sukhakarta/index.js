@@ -7,7 +7,6 @@ const LOGO_URL = '/logo.png'; // put logo file in /public/logo.png
 const WEBSITE_URL = 'https://sukhakarta-menu.vercel.app/menu/sukhakarta'; // TODO: change to your real site
 const WHATSAPP_NUMBER = '918087541496'; // your WhatsApp number
 const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzGgdzhju1saQtH1aDKqVWgp0yFEn2TK-6bgHmDxSlQVsrCdU4UbRv5qd8LgkFU8f_h/exec';
-// e.g. 'https://script.google.com/macros/s/AKfycbx.../exec'
 
 export default function SukhakartaMenu() {
   const [categories, setCategories] = useState([]);
@@ -17,6 +16,10 @@ export default function SukhakartaMenu() {
   const [quantities, setQuantities] = useState({}); // item.id -> quantity
   const [roomNo, setRoomNo] = useState(''); // room selection 1–3
   const [roomError, setRoomError] = useState('');
+
+  // NEW: veg filter & sort
+  const [vegFilter, setVegFilter] = useState('all'); // 'all' | 'veg' | 'nonveg'
+  const [vegSort, setVegSort] = useState('default'); // 'default' | 'veg-first' | 'nonveg-first'
 
   useEffect(() => {
     const loadData = async () => {
@@ -43,9 +46,37 @@ export default function SukhakartaMenu() {
     loadData();
   }, []);
 
-  const filteredItems = activeCategoryId
+  // base items filtered by category
+  const filteredItemsByCategory = activeCategoryId
     ? items.filter((i) => i.category_id === activeCategoryId)
     : items;
+
+  // apply vegFilter and vegSort to produce displayItems
+  const displayItems = (() => {
+    let arr = filteredItemsByCategory.slice();
+
+    // vegFilter: show only veg/nonveg or all
+    if (vegFilter === 'veg') {
+      arr = arr.filter((i) => i.veg === true);
+    } else if (vegFilter === 'nonveg') {
+      arr = arr.filter((i) => i.veg === false);
+    }
+
+    // vegSort: reorder but keep stability
+    if (vegSort === 'veg-first') {
+      arr.sort((a, b) => {
+        // veg === true should come before false
+        if (a.veg === b.veg) return 0;
+        return a.veg ? -1 : 1;
+      });
+    } else if (vegSort === 'nonveg-first') {
+      arr.sort((a, b) => {
+        if (a.veg === b.veg) return 0;
+        return a.veg ? 1 : -1;
+      });
+    }
+    return arr;
+  })();
 
   // --------- Quantity helpers ----------
   const getQuantity = (id) => quantities[id] || 0;
@@ -77,69 +108,69 @@ export default function SukhakartaMenu() {
     0
   );
 
- const handlePlaceOrder = () => {
-  if (typeof window === 'undefined') return;
-  if (!cartItems.length) {
-    alert('Please add at least one item to the cart.');
-    return;
-  }
+  const handlePlaceOrder = () => {
+    if (typeof window === 'undefined') return;
+    if (!cartItems.length) {
+      alert('Please add at least one item to the cart.');
+      return;
+    }
 
-  if (!roomNo) {
-    setRoomError('Please select your room number.');
-    return;
-  }
-  setRoomError('');
+    if (!roomNo) {
+      setRoomError('Please select your room number.');
+      return;
+    }
+    setRoomError('');
 
-  // Prepare payload for Google Sheet
-  const payload = {
-    roomNo,
-    orderTotal: cartTotal,
-    items: cartItems.map((it) => ({
-      itemName: it.name,
-      qty: it.qty,
-      price: Number(it.price) || 0,
-      total: (Number(it.price) || 0) * it.qty,
-    })),
+    // Prepare payload for Google Sheet
+    const payload = {
+      roomNo,
+      orderTotal: cartTotal,
+      items: cartItems.map((it) => ({
+        itemName: it.name,
+        qty: it.qty,
+        price: Number(it.price) || 0,
+        total: (Number(it.price) || 0) * it.qty,
+      })),
+    };
+
+    // Build WhatsApp message
+    const lines = payload.items
+      .map(
+        (it) => `• ${it.qty} x ${it.itemName} – ₹${it.total.toFixed(0)}`
+      )
+      .join('\n');
+
+    const message =
+      `Hi, I'd like to order from Sukhakarta Holiday Home:\n\n` +
+      `Room: ${roomNo}\n\n` +
+      `${lines}\n\n` +
+      `Total: ₹${cartTotal.toFixed(0)}`;
+
+    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
+      message
+    )}`;
+
+    // 🚀 Open WhatsApp immediately
+    window.open(url, '_blank');
+
+    // 🔄 Fire-and-forget: log to Google Sheet in background
+    try {
+      fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      console.error('Failed to log order to Google Sheet:', err);
+    }
+
+    // Clear cart after placing order
+    setQuantities({});
+    // keep roomNo as is
   };
-
-  // Build WhatsApp message
-  const lines = payload.items
-    .map(
-      (it) => `• ${it.qty} x ${it.itemName} – ₹${it.total.toFixed(0)}`
-    )
-    .join('\n');
-
-  const message =
-    `Hi, I'd like to order from Sukhakarta Holiday Home:\n\n` +
-    `Room: ${roomNo}\n\n` +
-    `${lines}\n\n` +
-    `Total: ₹${cartTotal.toFixed(0)}`;
-
-  const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
-    message
-  )}`;
-
-  // 🚀 Open WhatsApp immediately
-  window.open(url, '_blank');
-
-  // 🔄 Fire-and-forget: log to Google Sheet in background
-  try {
-    fetch(GOOGLE_SCRIPT_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-      },
-      body: JSON.stringify(payload),
-    });
-  } catch (err) {
-    console.error('Failed to log order to Google Sheet:', err);
-  }
-
-  // Clear cart after placing order
-  setQuantities({});
-  // keep roomNo as is
-};
 
   return (
     <div className="page">
@@ -170,7 +201,7 @@ export default function SukhakartaMenu() {
           </div>
         </div>
 
-        {/* ---------- CATEGORY TABS ---------- */}
+        {/* ---------- CATEGORY TABS + FILTERS ---------- */}
         <div className="tabs-wrapper">
           <div className="tabs">
             {categories.map((cat) => (
@@ -185,6 +216,57 @@ export default function SukhakartaMenu() {
               </button>
             ))}
           </div>
+
+          {/* Filters area */}
+          <div className="filters">
+            <div className="filter-group">
+              <label>Show</label>
+              <div className="filter-buttons">
+                <button
+                  className={`filter-btn ${vegFilter === 'all' ? 'active' : ''}`}
+                  onClick={() => setVegFilter('all')}
+                >
+                  All
+                </button>
+                <button
+                  className={`filter-btn ${vegFilter === 'veg' ? 'active' : ''}`}
+                  onClick={() => setVegFilter('veg')}
+                >
+                  Veg
+                </button>
+                <button
+                  className={`filter-btn ${vegFilter === 'nonveg' ? 'active' : ''}`}
+                  onClick={() => setVegFilter('nonveg')}
+                >
+                  Non-Veg
+                </button>
+              </div>
+            </div>
+
+            <div className="filter-group">
+              <label>Sort</label>
+              <div className="filter-buttons">
+                <button
+                  className={`filter-btn ${vegSort === 'default' ? 'active' : ''}`}
+                  onClick={() => setVegSort('default')}
+                >
+                  Default
+                </button>
+                <button
+                  className={`filter-btn ${vegSort === 'veg-first' ? 'active' : ''}`}
+                  onClick={() => setVegSort('veg-first')}
+                >
+                  Veg first
+                </button>
+                <button
+                  className={`filter-btn ${vegSort === 'nonveg-first' ? 'active' : ''}`}
+                  onClick={() => setVegSort('nonveg-first')}
+                >
+                  Non-Veg first
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         {loading && <p className="info">Loading menu…</p>}
@@ -193,13 +275,13 @@ export default function SukhakartaMenu() {
             No categories yet. Please add some from the admin panel.
           </p>
         )}
-        {!loading && categories.length > 0 && filteredItems.length === 0 && (
-          <p className="info">No items in this category yet.</p>
+        {!loading && categories.length > 0 && displayItems.length === 0 && (
+          <p className="info">No items in this category / filter yet.</p>
         )}
 
         {/* ---------- MENU ITEMS ---------- */}
         <div className="items">
-          {filteredItems.map((item, index) => {
+          {displayItems.map((item, index) => {
             const qty = getQuantity(item.id);
             return (
               <article
@@ -372,6 +454,9 @@ export default function SukhakartaMenu() {
 
         .tabs-wrapper {
           margin: 4px -4px 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
         }
 
         .tabs {
@@ -379,6 +464,47 @@ export default function SukhakartaMenu() {
           gap: 8px;
           overflow-x: auto;
           padding: 4px 2px 6px;
+        }
+
+        .filters {
+          display: flex;
+          gap: 14px;
+          align-items: center;
+          justify-content: flex-start;
+          flex-wrap: wrap;
+        }
+
+        .filter-group {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+
+        .filter-group label {
+          font-size: 12px;
+          color: #374151;
+          margin-right: 6px;
+        }
+
+        .filter-buttons {
+          display: inline-flex;
+          gap: 6px;
+        }
+
+        .filter-btn {
+          padding: 6px 10px;
+          border-radius: 999px;
+          border: 1px solid #e5e7eb;
+          background: #f9fafb;
+          cursor: pointer;
+          font-size: 12px;
+        }
+
+        .filter-btn.active {
+          background: linear-gradient(135deg, #f97316, #fb923c);
+          color: #fff;
+          border-color: transparent;
+          box-shadow: 0 8px 18px rgba(249, 115, 22, 0.18);
         }
 
         .tabs::-webkit-scrollbar {
@@ -730,6 +856,11 @@ export default function SukhakartaMenu() {
           .cart-btn {
             width: 100%;
             text-align: center;
+          }
+          .filters {
+            flex-direction: column;
+            gap: 6px;
+            align-items: flex-start;
           }
         }
       `}</style>
