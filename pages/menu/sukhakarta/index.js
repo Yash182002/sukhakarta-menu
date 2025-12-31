@@ -1,867 +1,602 @@
-// pages/menu/sukhakarta/index.js
+// pages/menu/sukhakarta/admin.js
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
 import { supabase } from '../../../lib/supabaseClient';
 
-const LOGO_URL = '/logo.png'; // put logo file in /public/logo.png
-const WEBSITE_URL = 'https://sukhakarta-menu.vercel.app/menu/sukhakarta'; // TODO: change to your real site
-const WHATSAPP_NUMBER = '918087541496'; // your WhatsApp number
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzGgdzhju1saQtH1aDKqVWgp0yFEn2TK-6bgHmDxSlQVsrCdU4UbRv5qd8LgkFU8f_h/exec';
+const STORAGE_BUCKET = 'menu-images';
 
-export default function SukhakartaMenu() {
+export default function AdminPanel() {
+  const [session, setSession] = useState(null);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authMode, setAuthMode] = useState('signin');
+  const [authMessage, setAuthMessage] = useState('');
+
   const [categories, setCategories] = useState([]);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategorySort, setNewCategorySort] = useState(0);
+
   const [items, setItems] = useState([]);
-  const [activeCategoryId, setActiveCategoryId] = useState(null);
+
+  // NEW ITEM
+  const [newItem, setNewItem] = useState({
+    name: '',
+    description: '',
+    price: '',
+    veg: true,
+    category_id: '',
+    image_url: '',
+    min_qty: 1, // NEW FIELD
+  });
+  const [newItemFile, setNewItemFile] = useState(null);
+
+  // EDIT ITEM
+  const [editingItemId, setEditingItemId] = useState(null);
+  const [editedItem, setEditedItem] = useState({
+    name: '',
+    description: '',
+    price: '',
+    veg: true,
+    category_id: '',
+    image_url: '',
+    min_qty: 1,
+  });
+  const [editedItemFile, setEditedItemFile] = useState(null);
+
+  // CATEGORY EDIT
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
+  const [editedCategoryName, setEditedCategoryName] = useState('');
+  const [editedCategorySort, setEditedCategorySort] = useState(0);
+
   const [loading, setLoading] = useState(true);
-  const [quantities, setQuantities] = useState({}); // item.id -> quantity
-  const [roomNo, setRoomNo] = useState(''); // room selection 1–3
-  const [roomError, setRoomError] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [categoryBusy, setCategoryBusy] = useState(false);
 
-  // NEW: veg filter & sort
-  const [vegFilter, setVegFilter] = useState('all'); // 'all' | 'veg' | 'nonveg'
-  const [vegSort, setVegSort] = useState('default'); // 'default' | 'veg-first' | 'nonveg-first'
-
+  // ---------- AUTH ----------
   useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      const { data: cats, error: catErr } = await supabase
-        .from('categories')
-        .select('*')
-        .order('sort_order', { ascending: true });
-
-      const { data: menu, error: itemErr } = await supabase
-        .from('menu_items')
-        .select('*')
-        .eq('available', true)
-        .order('created_at', { ascending: true });
-
-      if (catErr || itemErr) console.error(catErr || itemErr);
-
-      setCategories(cats || []);
-      setItems(menu || []);
-      if (cats && cats.length > 0) setActiveCategoryId(cats[0].id);
-      setLoading(false);
+    const getSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
+      if (session) await loadData();
+      else setLoading(false);
     };
+    getSession();
 
-    loadData();
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+        session ? loadData() : setLoading(false);
+      }
+    );
+
+    return () => {
+      try { listener.subscription.unsubscribe(); } catch (e) {}
+    };
   }, []);
 
-  // base items filtered by category
-  const filteredItemsByCategory = activeCategoryId
-    ? items.filter((i) => i.category_id === activeCategoryId)
-    : items;
+  // ---------- LOAD DATA ----------
+  const loadData = async () => {
+    setLoading(true);
 
-  // apply vegFilter and vegSort to produce displayItems
-  const displayItems = (() => {
-    let arr = filteredItemsByCategory.slice();
+    const { data: cats } = await supabase
+      .from('categories')
+      .select('*')
+      .order('sort_order', { ascending: true });
 
-    // vegFilter: show only veg/nonveg or all
-    if (vegFilter === 'veg') {
-      arr = arr.filter((i) => i.veg === true);
-    } else if (vegFilter === 'nonveg') {
-      arr = arr.filter((i) => i.veg === false);
-    }
+    const { data: menu } = await supabase
+      .from('menu_items')
+      .select('*')
+      .order('created_at', { ascending: true });
 
-    // vegSort: reorder but keep stability
-    if (vegSort === 'veg-first') {
-      arr.sort((a, b) => {
-        // veg === true should come before false
-        if (a.veg === b.veg) return 0;
-        return a.veg ? -1 : 1;
+    setCategories(cats || []);
+    setItems(menu || []);
+    setLoading(false);
+  };
+
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setAuthMessage('');
+
+    if (authMode === 'signin') {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: authEmail,
+        password: authPassword,
       });
-    } else if (vegSort === 'nonveg-first') {
-      arr.sort((a, b) => {
-        if (a.veg === b.veg) return 0;
-        return a.veg ? 1 : -1;
+      setAuthMessage(error ? error.message : 'Signed in.');
+    } else {
+      const { error } = await supabase.auth.signUp({
+        email: authEmail,
+        password: authPassword,
       });
+      setAuthMessage(error ? error.message : 'Admin created. Check email.');
     }
-    return arr;
-  })();
+  };
 
-  // --------- Quantity helpers ----------
-  const getQuantity = (id) => quantities[id] || 0;
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setCategories([]);
+    setItems([]);
+  };
 
-  const changeQuantity = (id, delta) => {
-    setQuantities((prev) => {
-      const current = prev[id] || 0;
-      const next = current + delta;
-      if (next <= 0) {
-        const copy = { ...prev };
-        delete copy[id];
-        return copy;
-      }
-      return { ...prev, [id]: next };
+  // ---------- CATEGORY CRUD ----------
+  const addCategory = async (e) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+
+    setCategoryBusy(true);
+
+    await supabase.from('categories').insert({
+      name: newCategoryName.trim(),
+      sort_order: Number(newCategorySort) || 0,
     });
+
+    setNewCategoryName('');
+    setNewCategorySort(0);
+    setCategoryBusy(false);
+    loadData();
   };
 
-  // --------- Cart derived values ----------
-  const cartItems = items
-    .map((item) => ({
-      ...item,
-      qty: getQuantity(item.id),
-    }))
-    .filter((item) => item.qty > 0);
-
-  const cartCount = cartItems.reduce((sum, it) => sum + it.qty, 0);
-  const cartTotal = cartItems.reduce(
-    (sum, it) => sum + (Number(it.price) || 0) * it.qty,
-    0
-  );
-
-  const handlePlaceOrder = () => {
-    if (typeof window === 'undefined') return;
-    if (!cartItems.length) {
-      alert('Please add at least one item to the cart.');
-      return;
-    }
-
-    if (!roomNo) {
-      setRoomError('Please select your room number.');
-      return;
-    }
-    setRoomError('');
-
-    // Prepare payload for Google Sheet
-    const payload = {
-      roomNo,
-      orderTotal: cartTotal,
-      items: cartItems.map((it) => ({
-        itemName: it.name,
-        qty: it.qty,
-        price: Number(it.price) || 0,
-        total: (Number(it.price) || 0) * it.qty,
-      })),
-    };
-
-    // Build WhatsApp message
-    const lines = payload.items
-      .map(
-        (it) => `• ${it.qty} x ${it.itemName} – ₹${it.total.toFixed(0)}`
-      )
-      .join('\n');
-
-    const message =
-      `Hi, I'd like to order from Sukhakarta Holiday Home:\n\n` +
-      `Room: ${roomNo}\n\n` +
-      `${lines}\n\n` +
-      `Total: ₹${cartTotal.toFixed(0)}`;
-
-    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(
-      message
-    )}`;
-
-    // 🚀 Open WhatsApp immediately
-    window.open(url, '_blank');
-
-    // 🔄 Fire-and-forget: log to Google Sheet in background
-    try {
-      fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
-        },
-        body: JSON.stringify(payload),
-      });
-    } catch (err) {
-      console.error('Failed to log order to Google Sheet:', err);
-    }
-
-    // Clear cart after placing order
-    setQuantities({});
-    // keep roomNo as is
+  const startEditCategory = (cat) => {
+    setEditingCategoryId(cat.id);
+    setEditedCategoryName(cat.name);
+    setEditedCategorySort(cat.sort_order ?? 0);
   };
 
+  const saveCategoryEdit = async () => {
+    await supabase
+      .from('categories')
+      .update({
+        name: editedCategoryName.trim(),
+        sort_order: Number(editedCategorySort) || 0,
+      })
+      .eq('id', editingCategoryId);
+
+    setEditingCategoryId(null);
+    loadData();
+  };
+
+  const deleteCategory = async (id) => {
+    if (!confirm('Delete this category?')) return;
+
+    await supabase.from('categories').delete().eq('id', id);
+    loadData();
+  };
+
+  // ---------- IMAGE HANDLING ----------
+  const compressImage = (file, maxSize = 800, quality = 0.75) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let { width, height } = img;
+
+          if (width > height && width > maxSize) {
+            height = (height * maxSize) / width;
+            width = maxSize;
+          } else if (height > maxSize) {
+            width = (width * maxSize) / height;
+            height = maxSize;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob((blob) => resolve(blob), 'image/jpeg', quality);
+        };
+        img.src = evt.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+  const uploadImageToStorage = async (file) => {
+    if (!file) return null;
+
+    const blob = await compressImage(file, 800, 0.75);
+    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+
+    const { error } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(`dishes/${fileName}`, blob, { contentType: 'image/jpeg' });
+
+    if (error) throw new Error(error.message);
+
+    const { data: { publicUrl } } = supabase.storage
+      .from(STORAGE_BUCKET)
+      .getPublicUrl(`dishes/${fileName}`);
+
+    return publicUrl;
+  };
+
+  // ---------- ADD ITEM ----------
+  const addItem = async (e) => {
+    e.preventDefault();
+    setUploading(true);
+
+    let imageUrl = newItem.image_url || null;
+    if (newItemFile) imageUrl = await uploadImageToStorage(newItemFile);
+
+    await supabase.from('menu_items').insert({
+      name: newItem.name.trim(),
+      description: newItem.description || null,
+      price: Number(newItem.price) || null,
+      veg: newItem.veg,
+      category_id: newItem.category_id || null,
+      image_url: imageUrl,
+      available: true,
+      min_qty: Number(newItem.min_qty) || 1, // NEW
+    });
+
+    setNewItem({
+      name: '',
+      description: '',
+      price: '',
+      veg: true,
+      category_id: '',
+      image_url: '',
+      min_qty: 1,
+    });
+    setNewItemFile(null);
+    setUploading(false);
+    loadData();
+  };
+
+  // ---------- EDIT ITEM ----------
+  const startEditItem = (item) => {
+    setEditingItemId(item.id);
+    setEditedItem({
+      name: item.name,
+      description: item.description,
+      price: item.price,
+      veg: item.veg,
+      category_id: item.category_id,
+      image_url: item.image_url,
+      min_qty: item.min_qty ?? 1, // NEW
+    });
+    setEditedItemFile(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const saveItemEdit = async (e) => {
+    e.preventDefault();
+    setUploading(true);
+
+    let imageUrl = editedItem.image_url || null;
+    if (editedItemFile) imageUrl = await uploadImageToStorage(editedItemFile);
+
+    await supabase
+      .from('menu_items')
+      .update({
+        name: editedItem.name.trim(),
+        description: editedItem.description,
+        price: Number(editedItem.price) || null,
+        veg: editedItem.veg,
+        category_id: editedItem.category_id,
+        image_url: imageUrl,
+        min_qty: Number(editedItem.min_qty) || 1, // NEW
+      })
+      .eq('id', editingItemId);
+
+    setEditedItemFile(null);
+    setEditingItemId(null);
+    setUploading(false);
+    loadData();
+  };
+
+  const cancelEditItem = () => {
+    setEditingItemId(null);
+  };
+
+  // ---------- DELETE ITEM ----------
+  const deleteItem = async (id) => {
+    if (!confirm('Delete this item?')) return;
+    await supabase.from('menu_items').delete().eq('id', id);
+    loadData();
+  };
+
+  // ---------- ADMIN LOGIN VIEW ----------
+  if (!session) {
+    return (
+      <div className="page">
+        <div className="auth-card">
+          <h2>Sukhakarta Menu – Admin</h2>
+          <form onSubmit={handleAuth} className="auth-form">
+            <input type="email" placeholder="Email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} />
+            <input type="password" placeholder="Password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} />
+            <button type="submit">{authMode === 'signin' ? 'Sign In' : 'Create Admin'}</button>
+          </form>
+          <button className="ghost-btn" onClick={() => setAuthMode(authMode === 'signin' ? 'signup' : 'signin')}>
+            Switch to {authMode === 'signin' ? 'Sign Up' : 'Sign In'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- ADMIN PANEL ----------
   return (
     <div className="page">
-      <div className="card">
-        {/* ---------- LOGO + HEADER ---------- */}
-        <div className="logo-header">
-          <a
-            href={WEBSITE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="logo-link"
-          >
-            {LOGO_URL ? (
-              <Image
-                src={LOGO_URL}
-                alt="Sukhakarta Holiday Home Logo"
-                width={120}
-                height={60}
+      <div className="admin-card">
+        <header className="admin-header">
+          <h2>Sukhakarta Menu – Admin Panel</h2>
+          <button className="signout-btn" onClick={handleSignOut}>Sign Out</button>
+        </header>
+
+        {/* CATEGORY SECTION */}
+        <section className="panel">
+          <h3>Categories</h3>
+
+          <form onSubmit={addCategory} className="row">
+            <input type="text" placeholder="Category name" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} />
+            <input type="number" placeholder="Sort Order" value={newCategorySort} onChange={(e) => setNewCategorySort(e.target.value)} />
+            <button type="submit">Add</button>
+          </form>
+
+          {editingCategoryId && (
+            <div className="edit-category-box">
+              <input type="text" value={editedCategoryName} onChange={(e) => setEditedCategoryName(e.target.value)} />
+              <input type="number" value={editedCategorySort} onChange={(e) => setEditedCategorySort(e.target.value)} />
+              <button onClick={saveCategoryEdit}>Save</button>
+              <button onClick={() => setEditingCategoryId(null)}>Cancel</button>
+            </div>
+          )}
+
+          {categories.map((cat) => (
+            <div key={cat.id} className="category-row">
+              <span>{cat.name}</span>
+              <div>
+                <button onClick={() => startEditCategory(cat)}>Edit</button>
+                <button onClick={() => deleteCategory(cat.id)}>Delete</button>
+              </div>
+            </div>
+          ))}
+        </section>
+
+        {/* ADD / EDIT ITEM */}
+        <section className="panel">
+          <h3>{editingItemId ? 'Edit Item' : 'Add Item'}</h3>
+
+          <form onSubmit={editingItemId ? saveItemEdit : addItem} className="grid">
+
+            <input
+              type="text"
+              placeholder="Item name"
+              value={editingItemId ? editedItem.name : newItem.name}
+              onChange={(e) =>
+                editingItemId
+                  ? setEditedItem({ ...editedItem, name: e.target.value })
+                  : setNewItem({ ...newItem, name: e.target.value })
+              }
+            />
+
+            <input
+              type="number"
+              placeholder="Price"
+              value={editingItemId ? editedItem.price : newItem.price}
+              onChange={(e) =>
+                editingItemId
+                  ? setEditedItem({ ...editedItem, price: e.target.value })
+                  : setNewItem({ ...newItem, price: e.target.value })
+              }
+            />
+
+            {/* NEW: MIN QTY */}
+            <input
+              type="number"
+              placeholder="Minimum Qty"
+              value={editingItemId ? editedItem.min_qty : newItem.min_qty}
+              onChange={(e) =>
+                editingItemId
+                  ? setEditedItem({ ...editedItem, min_qty: e.target.value })
+                  : setNewItem({ ...newItem, min_qty: e.target.value })
+              }
+            />
+
+            <select
+              value={editingItemId ? editedItem.category_id : newItem.category_id}
+              onChange={(e) =>
+                editingItemId
+                  ? setEditedItem({ ...editedItem, category_id: e.target.value })
+                  : setNewItem({ ...newItem, category_id: e.target.value })
+              }
+            >
+              <option value="">Select category</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+
+            <select
+              value={editingItemId ? (editedItem.veg ? 'veg' : 'nonveg') : (newItem.veg ? 'veg' : 'nonveg')}
+              onChange={(e) =>
+                editingItemId
+                  ? setEditedItem({ ...editedItem, veg: e.target.value === 'veg' })
+                  : setNewItem({ ...newItem, veg: e.target.value === 'veg' })
+              }
+            >
+              <option value="veg">Veg</option>
+              <option value="nonveg">Non-Veg</option>
+            </select>
+
+            {/* FILE UPLOAD */}
+            <div className="file-wrapper wide">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) =>
+                  editingItemId
+                    ? setEditedItemFile(e.target.files?.[0] || null)
+                    : setNewItemFile(e.target.files?.[0] || null)
+                }
               />
-            ) : (
-              <span className="placeholder-logo">🏨</span>
+            </div>
+
+            <input
+              type="text"
+              className="wide"
+              placeholder="Image URL (optional)"
+              value={editingItemId ? editedItem.image_url : newItem.image_url}
+              onChange={(e) =>
+                editingItemId
+                  ? setEditedItem({ ...editedItem, image_url: e.target.value })
+                  : setNewItem({ ...newItem, image_url: e.target.value })
+              }
+            />
+
+            <textarea
+              className="wide"
+              placeholder="Description"
+              value={editingItemId ? editedItem.description : newItem.description}
+              onChange={(e) =>
+                editingItemId
+                  ? setEditedItem({ ...editedItem, description: e.target.value })
+                  : setNewItem({ ...newItem, description: e.target.value })
+              }
+            />
+
+            <button type="submit" className="primary-btn wide">
+              {editingItemId ? 'Update Item' : 'Add Item'}
+            </button>
+
+            {editingItemId && (
+              <button type="button" className="small-btn" onClick={cancelEditItem}>
+                Cancel
+              </button>
             )}
-          </a>
+          </form>
+        </section>
 
-          <div className="titles">
-            <h1>Sukhakarta Holiday Home</h1>
-            <p className="subtitle">Digital Menu · Scan & Order</p>
-          </div>
-        </div>
+        {/* EXISTING ITEMS */}
+        <section className="panel">
+          <h3>Existing Items</h3>
 
-        {/* ---------- CATEGORY TABS + FILTERS ---------- */}
-        <div className="tabs-wrapper">
-          <div className="tabs">
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => setActiveCategoryId(cat.id)}
-                className={`tab ${
-                  activeCategoryId === cat.id ? 'tab-active' : ''
-                }`}
-              >
-                {cat.name}
-              </button>
-            ))}
-          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Photo</th>
+                  <th>Name</th>
+                  <th>Category</th>
+                  <th>Price</th>
+                  <th>Veg</th>
+                  <th>Available</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
 
-          {/* Filters area */}
-          <div className="filters">
-            <div className="filter-group">
-              <label>Show</label>
-              <div className="filter-buttons">
-                <button
-                  className={`filter-btn ${vegFilter === 'all' ? 'active' : ''}`}
-                  onClick={() => setVegFilter('all')}
-                >
-                  All
-                </button>
-                <button
-                  className={`filter-btn ${vegFilter === 'veg' ? 'active' : ''}`}
-                  onClick={() => setVegFilter('veg')}
-                >
-                  Veg
-                </button>
-                <button
-                  className={`filter-btn ${vegFilter === 'nonveg' ? 'active' : ''}`}
-                  onClick={() => setVegFilter('nonveg')}
-                >
-                  Non-Veg
-                </button>
-              </div>
-            </div>
-
-            <div className="filter-group">
-              <label>Sort</label>
-              <div className="filter-buttons">
-                <button
-                  className={`filter-btn ${vegSort === 'default' ? 'active' : ''}`}
-                  onClick={() => setVegSort('default')}
-                >
-                  Default
-                </button>
-                <button
-                  className={`filter-btn ${vegSort === 'veg-first' ? 'active' : ''}`}
-                  onClick={() => setVegSort('veg-first')}
-                >
-                  Veg first
-                </button>
-                <button
-                  className={`filter-btn ${vegSort === 'nonveg-first' ? 'active' : ''}`}
-                  onClick={() => setVegSort('nonveg-first')}
-                >
-                  Non-Veg first
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {loading && <p className="info">Loading menu…</p>}
-        {!loading && !categories.length && (
-          <p className="info">
-            No categories yet. Please add some from the admin panel.
-          </p>
-        )}
-        {!loading && categories.length > 0 && displayItems.length === 0 && (
-          <p className="info">No items in this category / filter yet.</p>
-        )}
-
-        {/* ---------- MENU ITEMS ---------- */}
-        <div className="items">
-          {displayItems.map((item, index) => {
-            const qty = getQuantity(item.id);
-            return (
-              <article
-                key={item.id}
-                className="item"
-                style={{ animationDelay: `${0.04 * index}s` }} // staggered animation
-              >
-                <div className="item-image">
-                  {item.image_url ? (
-                    <img src={item.image_url} alt={item.name} />
-                  ) : (
-                    <div className="image-placeholder">🍽️</div>
-                  )}
-                </div>
-
-                <div className="item-content">
-                  <div className="item-row">
-                    <h3>{item.name}</h3>
-                    {item.price != null && (
-                      <span className="price">
-                        ₹{Number(item.price).toFixed(0)}
-                      </span>
-                    )}
-                  </div>
-
-                  {item.description && (
-                    <p className="description">{item.description}</p>
-                  )}
-
-                  <div className="bottom-row">
-                    <span className={`pill ${item.veg ? 'veg' : 'nonveg'}`}>
-                      <span className="dot" /> {item.veg ? 'Veg' : 'Non-Veg'}
-                    </span>
-
-                    <div className="actions">
-                      <div className="qty-wrapper">
-                        <button
-                          type="button"
-                          className="qty-btn"
-                          onClick={() => changeQuantity(item.id, -1)}
-                        >
-                          −
+              <tbody>
+                {items.map((item) => {
+                  const cat = categories.find((c) => c.id === item.category_id);
+                  return (
+                    <tr key={item.id}>
+                      <td>
+                        {item.image_url ? (
+                          <img src={item.image_url} className="thumb" />
+                        ) : (
+                          <span className="thumb-placeholder">🍽️</span>
+                        )}
+                      </td>
+                      <td>{item.name}</td>
+                      <td>{cat ? cat.name : '-'}</td>
+                      <td>₹{item.price}</td>
+                      <td>{item.veg ? 'Veg' : 'Non-Veg'}</td>
+                      <td>{item.available ? 'Yes' : 'No'}</td>
+                      <td>
+                        <button className="small-btn" onClick={() => startEditItem(item)}>Edit</button>
+                        <button className="small-btn" onClick={() => toggleAvailable(item)}>
+                          {item.available ? 'Disable' : 'Enable'}
                         </button>
-                        <span className="qty-value">{qty}</span>
-                        <button
-                          type="button"
-                          className="qty-btn"
-                          onClick={() => changeQuantity(item.id, +1)}
-                        >
-                          +
-                        </button>
-                      </div>
-                      {qty > 0 && (
-                        <span className="in-cart-tag">In cart</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+                        <button className="small-btn danger" onClick={() => deleteItem(item.id)}>Delete</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
 
-        {/* ---------- CART BAR ---------- */}
-        {cartItems.length > 0 && (
-          <div className="cart-shell">
-            <div className="cart-bar">
-              <div className="cart-main">
-                <div className="cart-info">
-                  <span>
-                    {cartCount} item{cartCount > 1 ? 's' : ''}
-                  </span>
-                  <span>₹{cartTotal.toFixed(0)}</span>
-                </div>
-
-                <div className="room-select">
-                  <span className="room-label">Room</span>
-                  <div className="room-buttons">
-                    {[1, 2, 3].map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        className={`room-btn ${
-                          roomNo === String(n) ? 'room-btn-active' : ''
-                        }`}
-                        onClick={() => setRoomNo(String(n))}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                className="cart-btn"
-                onClick={handlePlaceOrder}
-              >
-                Place Order
-              </button>
-            </div>
-            {roomError && <p className="room-error">{roomError}</p>}
+            </table>
           </div>
-        )}
+        </section>
       </div>
 
       {/* ---------- STYLES ---------- */}
       <style jsx>{`
         .page {
           min-height: 100vh;
-          display: flex;
-          justify-content: center;
-          align-items: flex-start;
-          padding: 28px 12px 32px; /* more top padding so tabs don't look cut */
-          background: radial-gradient(
-            circle at top,
-            #fff7e6 0%,
-            #e5e7eb 60%,
-            #f9fafb 100%
-          );
-          font-family: system-ui, -apple-system, BlinkMacSystemFont,
-            'Segoe UI', sans-serif;
-        }
-
-        .card {
-          width: 100%;
-          max-width: 760px;
-          background: rgba(255, 255, 255, 0.9);
-          backdrop-filter: blur(16px);
-          border-radius: 24px;
-          padding: 18px 16px 24px;
-          margin-top: 4px; /* small margin from top to avoid cut look */
-          box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
-          animation: floatIn 0.45s ease-out;
-          position: relative;
-        }
-
-        /* Header with logo */
-        .logo-header {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin-bottom: 10px;
-        }
-
-        .logo-link {
-          text-decoration: none;
-        }
-
-        .placeholder-logo {
-          font-size: 30px;
-        }
-
-        .titles {
-          text-align: left;
-        }
-
-        h1 {
-          margin: 0;
-          font-size: 20px;
-          font-weight: 700;
-        }
-
-        .subtitle {
-          margin: 2px 0 4px;
-          font-size: 13px;
-          color: #6b7280;
-        }
-
-        .tabs-wrapper {
-          margin: 4px -4px 14px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .tabs {
-          display: flex;
-          gap: 8px;
-          overflow-x: auto;
-          padding: 4px 2px 6px;
-        }
-
-        .filters {
-          display: flex;
-          gap: 14px;
-          align-items: center;
-          justify-content: flex-start;
-          flex-wrap: wrap;
-        }
-
-        .filter-group {
-          display: flex;
-          gap: 8px;
-          align-items: center;
-        }
-
-        .filter-group label {
-          font-size: 12px;
-          color: #374151;
-          margin-right: 6px;
-        }
-
-        .filter-buttons {
-          display: inline-flex;
-          gap: 6px;
-        }
-
-        .filter-btn {
-          padding: 6px 10px;
-          border-radius: 999px;
-          border: 1px solid #e5e7eb;
-          background: #f9fafb;
-          cursor: pointer;
-          font-size: 12px;
-        }
-
-        .filter-btn.active {
-          background: linear-gradient(135deg, #f97316, #fb923c);
-          color: #fff;
-          border-color: transparent;
-          box-shadow: 0 8px 18px rgba(249, 115, 22, 0.18);
-        }
-
-        .tabs::-webkit-scrollbar {
-          height: 3px;
-        }
-
-        .tabs::-webkit-scrollbar-thumb {
-          background: #e5e7eb;
-          border-radius: 999px;
-        }
-
-        .tab {
-          flex-shrink: 0;
-          padding: 7px 16px;
-          border-radius: 999px;
-          border: 1px solid #e5e7eb;
-          background: #f9fafb;
-          font-size: 13px;
-          cursor: pointer;
-          white-space: nowrap;
-          transition: all 0.18s ease-out;
-        }
-
-        .tab-active {
-          background: linear-gradient(135deg, #f97316, #fb923c);
-          color: white;
-          border-color: transparent;
-          box-shadow: 0 10px 20px rgba(248, 113, 22, 0.45);
-          transform: translateY(-2px);
-        }
-
-        .tab:hover:not(.tab-active) {
+          padding: 20px;
           background: #f3f4f6;
-          transform: translateY(-1px);
-        }
-
-        .info {
-          text-align: center;
-          font-size: 13px;
-          color: #6b7280;
-          margin: 8px 0 4px;
-        }
-
-        .items {
           display: flex;
-          flex-direction: column;
-          gap: 12px;
-          margin-top: 6px;
-        }
-
-        .item {
-          display: flex;
-          gap: 12px;
-          padding: 10px;
-          border-radius: 18px;
-          background: radial-gradient(circle at top left, #fff7ed, #ffffff);
-          border: 1px solid #f3f4f6;
-          box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
-          transition: transform 0.16s ease-out, box-shadow 0.16s ease-out,
-            border-color 0.16s;
-          animation: itemIn 0.32s ease-out both;
-        }
-
-        .item:hover {
-          transform: translateY(-2px) scale(1.01);
-          box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
-          border-color: #fed7aa;
-        }
-
-        .item-image {
-          width: 110px;
-          height: 110px;
-          border-radius: 18px;
-          overflow: hidden;
-          flex-shrink: 0;
-          background: #fee2e2;
-        }
-
-        .item-image img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          display: block;
-          opacity: 0;
-          transform: scale(1.03);
-          animation: imgFadeIn 0.35s ease-out forwards;
-        }
-
-        .image-placeholder {
-          width: 100%;
-          height: 100%;
-          display: flex;
-          align-items: center;
           justify-content: center;
-          background: linear-gradient(135deg, #fee2e2, #fffbeb);
-          font-size: 26px;
         }
-
-        .item-content {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
-          gap: 4px;
+        .admin-card {
+          width: 100%;
+          max-width: 1000px;
+          background: white;
+          padding: 20px;
+          border-radius: 20px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         }
-
-        .item-row {
+        .admin-header {
           display: flex;
           justify-content: space-between;
-          align-items: center;
-          gap: 8px;
+          margin-bottom: 20px;
         }
-
-        h3 {
-          margin: 0;
-          font-size: 15px;
-        }
-
-        .price {
-          font-weight: 600;
-          font-size: 15px;
-        }
-
-        .description {
-          margin: 3px 0 4px;
-          font-size: 13px;
-          color: #6b7280;
-        }
-
-        .bottom-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 3px 10px;
-          border-radius: 999px;
-          font-size: 11px;
-          font-weight: 500;
-        }
-
-        .veg {
-          background: #ecfdf3;
-          color: #166534;
-        }
-
-        .nonveg {
-          background: #fef2f2;
-          color: #b91c1c;
-        }
-
-        .dot {
-          width: 7px;
-          height: 7px;
-          border-radius: 999px;
-          background: currentColor;
-        }
-
-        .actions {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .qty-wrapper {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          border-radius: 999px;
-          padding: 2px 6px;
+        .panel {
+          background: #fafafa;
+          padding: 15px;
+          border-radius: 12px;
+          margin-bottom: 20px;
           border: 1px solid #e5e7eb;
-          background: #f9fafb;
         }
-
-        .qty-btn {
-          border: none;
-          background: transparent;
-          font-size: 16px;
-          line-height: 1;
-          padding: 2px 6px;
-          cursor: pointer;
-        }
-
-        .qty-value {
-          min-width: 20px;
-          text-align: center;
-          font-size: 13px;
-          font-weight: 500;
-        }
-
-        .in-cart-tag {
-          font-size: 11px;
-          padding: 2px 8px;
-          border-radius: 999px;
-          background: #dcfce7;
-          color: #166534;
-        }
-
-        /* Cart area */
-        .cart-shell {
-          margin-top: 16px;
-        }
-
-        .cart-bar {
-          position: sticky;
-          bottom: 0;
-          padding: 8px 10px;
-          border-radius: 18px;
-          background: rgba(15, 23, 42, 0.9);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
+        .grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
           gap: 10px;
-          color: #e5e7eb;
         }
-
-        .cart-main {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
+        .wide {
+          grid-column: 1 / 3;
         }
-
-        .cart-info {
-          display: flex;
-          justify-content: space-between;
-          gap: 12px;
-          font-size: 13px;
+        table {
+          width: 100%;
+          border-collapse: collapse;
         }
-
-        .cart-info span:last-child {
-          font-weight: 600;
+        th, td {
+          padding: 8px;
+          border-bottom: 1px solid #ddd;
         }
-
-        .room-select {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 12px;
+        .thumb {
+          width: 50px;
+          height: 40px;
+          object-fit: cover;
+          border-radius: 6px;
         }
-
-        .room-label {
-          opacity: 0.9;
-        }
-
-        .room-buttons {
+        .thumb-placeholder {
           display: inline-flex;
-          gap: 4px;
+          width: 50px;
+          height: 40px;
+          justify-content: center;
+          align-items: center;
+          background: #eee;
         }
-
-        .room-btn {
-          border-radius: 999px;
-          border: 1px solid #4b5563;
-          padding: 2px 8px;
-          font-size: 11px;
-          background: transparent;
-          color: #e5e7eb;
-          cursor: pointer;
-        }
-
-        .room-btn-active {
-          background: #22c55e;
-          border-color: #22c55e;
-          color: #0f172a;
-        }
-
-        .cart-btn {
+        .primary-btn {
+          background: green;
+          color: white;
+          padding: 10px;
           border: none;
-          border-radius: 999px;
-          padding: 7px 16px;
-          font-size: 13px;
-          font-weight: 600;
-          background: linear-gradient(135deg, #16a34a, #22c55e);
-          color: #f9fafb;
-          cursor: pointer;
-          box-shadow: 0 8px 18px rgba(22, 163, 74, 0.5);
-          white-space: nowrap;
+          border-radius: 10px;
         }
-
-        .room-error {
-          margin: 4px 4px 0;
-          font-size: 11px;
-          color: #fecaca;
+        .small-btn {
+          padding: 6px 12px;
+          margin-right: 6px;
+          border-radius: 10px;
+          border: none;
         }
-
-        @keyframes floatIn {
-          from {
-            opacity: 0;
-            transform: translateY(8px) scale(0.98);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
-        }
-
-        @keyframes itemIn {
-          from {
-            opacity: 0;
-            transform: translateY(8px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @keyframes imgFadeIn {
-          from {
-            opacity: 0;
-            transform: scale(1.03);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
-        }
-
-        @media (max-width: 480px) {
-          .card {
-            border-radius: 20px;
-            padding: 14px 12px 20px;
-          }
-          .item-image {
-            width: 90px;
-            height: 90px;
-          }
-          .bottom-row {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-          .actions {
-            width: 100%;
-            justify-content: flex-end;
-          }
-          .cart-bar {
-            flex-direction: column;
-            align-items: stretch;
-            border-radius: 16px;
-          }
-          .cart-main {
-            flex-direction: column;
-            align-items: flex-start;
-          }
-          .cart-btn {
-            width: 100%;
-            text-align: center;
-          }
-          .filters {
-            flex-direction: column;
-            gap: 6px;
-            align-items: flex-start;
-          }
+        .danger {
+          background: #fee2e2;
+          color: #b91c1c;
         }
       `}</style>
     </div>
