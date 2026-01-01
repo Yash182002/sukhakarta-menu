@@ -523,82 +523,176 @@ export default function AdminPanel() {
       </div>
 
       {/* ---------- STYLES ---------- */}
-      <style jsx>{`
-        .page {
-          min-height: 100vh;
-          padding: 20px;
-          background: #f3f4f6;
-          display: flex;
-          justify-content: center;
-        }
-        .admin-card {
-          width: 100%;
-          max-width: 1000px;
-          background: white;
-          padding: 20px;
-          border-radius: 20px;
-          box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-        }
-        .admin-header {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 20px;
-        }
-        .panel {
-          background: #fafafa;
-          padding: 15px;
-          border-radius: 12px;
-          margin-bottom: 20px;
-          border: 1px solid #e5e7eb;
-        }
-        .grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 10px;
-        }
-        .wide {
-          grid-column: 1 / 3;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-        th, td {
-          padding: 8px;
-          border-bottom: 1px solid #ddd;
-        }
-        .thumb {
-          width: 50px;
-          height: 40px;
-          object-fit: cover;
-          border-radius: 6px;
-        }
-        .thumb-placeholder {
-          display: inline-flex;
-          width: 50px;
-          height: 40px;
-          justify-content: center;
-          align-items: center;
-          background: #eee;
-        }
-        .primary-btn {
-          background: green;
-          color: white;
-          padding: 10px;
-          border: none;
-          border-radius: 10px;
-        }
-        .small-btn {
-          padding: 6px 12px;
-          margin-right: 6px;
-          border-radius: 10px;
-          border: none;
-        }
-        .danger {
-          background: #fee2e2;
-          color: #b91c1c;
-        }
-      `}</style>
-    </div>
-  );
-}
+     <style jsx>{`
+  .page {
+    min-height: 100vh;
+    padding: 20px;
+    background: radial-gradient(circle at top, #fff7e6, #e5e7eb);
+    display: flex;
+    justify-content: center;
+  }
+
+  .admin-card {
+    width: 100%;
+    max-width: 1000px;
+    background: white;
+    padding: 18px 14px 22px;
+    border-radius: 24px;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+  }
+
+  .admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+  }
+
+  .signout-btn {
+    background: #fee2e2;
+    color: #b91c1c;
+    padding: 8px 16px;
+    border-radius: 999px;
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .panel {
+    background: #f9fafb;
+    padding: 14px;
+    border-radius: 16px;
+    margin-bottom: 20px;
+    border: 1px solid #e5e7eb;
+  }
+
+  h3 {
+    margin: 0 0 10px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  /* FIXED GRID */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .wide {
+    grid-column: span 2;
+  }
+
+  input,
+  select,
+  textarea {
+    border-radius: 10px;
+    border: 1px solid #d1d5db;
+    padding: 10px;
+    font-size: 14px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  textarea {
+    min-height: 70px;
+  }
+
+  .primary-btn {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: white;
+    padding: 10px 14px;
+    border-radius: 999px;
+    font-weight: 600;
+    border: none;
+    width: 100%;
+    text-align: center;
+  }
+
+  .small-btn {
+    padding: 7px 12px;
+    font-size: 12px;
+    border-radius: 10px;
+    background: #e5e7eb;
+    border: none;
+  }
+
+  .small-btn.danger {
+    background: #fee2e2;
+    color: #b91c1c;
+  }
+
+  .category-row {
+    background: white;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .edit-category-box {
+    background: white;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
+    margin-top: 10px;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  th, td {
+    padding: 10px;
+    border-bottom: 1px solid #e5e7eb;
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  th {
+    background: #f3f4f6;
+    font-weight: 600;
+  }
+
+  .thumb {
+    width: 60px;
+    height: 50px;
+    object-fit: cover;
+    border-radius: 8px;
+  }
+
+  .thumb-placeholder {
+    width: 60px;
+    height: 50px;
+    background: #e5e7eb;
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* MOBILE FIXES */
+  @media (max-width: 700px) {
+    .grid {
+      grid-template-columns: 1fr;
+    }
+    .wide {
+      grid-column: span 1;
+    }
+    .admin-header {
+      flex-direction: column;
+      gap: 10px;
+      text-align: center;
+    }
+  }
+`}</style>
+
