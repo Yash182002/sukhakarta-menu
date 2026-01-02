@@ -304,7 +304,7 @@ export default function AdminPanel() {
     if (!newItem.name.trim()) return;
 
     // Validate minimum quantity
-    const minQty = Number(newItem.min_quantity);
+    const minQty = Number(newitem.min_qty);
     if (minQty < 1) {
       alert('Minimum quantity must be at least 1');
       return;
@@ -361,7 +361,7 @@ export default function AdminPanel() {
       veg: !!item.veg,
       category_id: item.category_id || '',
       image_url: item.image_url || '',
-      min_quantity: item.min_quantity || 1, // NEW: load min_quantity
+      min_quantity: item.min_qty || 1, // NEW: load min_quantity
     });
     setEditedItemFile(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -389,7 +389,7 @@ export default function AdminPanel() {
     }
 
     // Validate minimum quantity
-    const minQty = Number(editedItem.min_quantity);
+    const minQty = Number(editeditem.min_qty);
     if (minQty < 1) {
       alert('Minimum quantity must be at least 1');
       return;
@@ -747,7 +747,7 @@ export default function AdminPanel() {
                   type="number"
                   placeholder="Min Quantity"
                   min="1"
-                  value={editingItemId ? editedItem.min_quantity : newItem.min_quantity}
+                  value={editingItemId ? editeditem.min_qty : newitem.min_qty}
                   onChange={(e) =>
                     editingItemId
                       ? setEditedItem({ ...editedItem, min_quantity: e.target.value })
@@ -884,7 +884,7 @@ export default function AdminPanel() {
                                 : '-'}
                             </td>
                             <td>{item.veg ? 'Veg' : 'Non-Veg'}</td>
-                            <td>{item.min_quantity || 1}</td>
+                            <td>{item.min_qty || 1}</td>
                             <td>{item.available ? 'Yes' : 'No'}</td>
                             <td>
                               <button
