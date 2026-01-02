@@ -304,7 +304,7 @@ export default function AdminPanel() {
     if (!newItem.name.trim()) return;
 
     // Validate minimum quantity
-    const minQty = Number(newitem.min_quantity);
+    const minQty = Number(newItem.min_quantity);
     if (minQty < 1) {
       alert('Minimum quantity must be at least 1');
       return;
@@ -389,7 +389,7 @@ export default function AdminPanel() {
     }
 
     // Validate minimum quantity
-    const minQty = Number(editeditem.min_quantity);
+    const minQty = Number(editedItem.min_quantity);
     if (minQty < 1) {
       alert('Minimum quantity must be at least 1');
       return;
@@ -747,7 +747,7 @@ export default function AdminPanel() {
                   type="number"
                   placeholder="Min Quantity"
                   min="1"
-                  value={editingItemId ? editeditem.min_quantity : newitem.min_quantity}
+                  value={editingItemId ? editedItem.min_quantity : newItem.min_quantity}
                   onChange={(e) =>
                     editingItemId
                       ? setEditedItem({ ...editedItem, min_quantity: e.target.value })
