@@ -3,9 +3,9 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { supabase } from '../../../lib/supabaseClient';
 
-const LOGO_URL = '/logo.png';
-const WEBSITE_URL = 'https://sukhakarta-menu.vercel.app/menu/sukhakarta';
-const WHATSAPP_NUMBER = '918087541496';
+const LOGO_URL = '/logo.png'; // put logo file in /public/logo.png
+const WEBSITE_URL = 'https://sukhakarta-menu.vercel.app/menu/sukhakarta'; // TODO: change to your real site
+const WHATSAPP_NUMBER = '918087541496'; // your WhatsApp number
 const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzGgdzhju1saQtH1aDKqVWgp0yFEn2TK-6bgHmDxSlQVsrCdU4UbRv5qd8LgkFU8f_h/exec';
 
 export default function SukhakartaMenu() {
@@ -13,12 +13,13 @@ export default function SukhakartaMenu() {
   const [items, setItems] = useState([]);
   const [activeCategoryId, setActiveCategoryId] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [quantities, setQuantities] = useState({});
-  const [roomNo, setRoomNo] = useState('');
+  const [quantities, setQuantities] = useState({}); // item.id -> quantity
+  const [roomNo, setRoomNo] = useState(''); // room selection 1–3
   const [roomError, setRoomError] = useState('');
 
-  const [vegFilter, setVegFilter] = useState('all');
-  const [vegSort, setVegSort] = useState('default');
+  // NEW: veg filter & sort
+  const [vegFilter, setVegFilter] = useState('all'); // 'all' | 'veg' | 'nonveg'
+  const [vegSort, setVegSort] = useState('default'); // 'default' | 'veg-first' | 'nonveg-first'
 
   useEffect(() => {
     const loadData = async () => {
@@ -45,21 +46,26 @@ export default function SukhakartaMenu() {
     loadData();
   }, []);
 
+  // base items filtered by category
   const filteredItemsByCategory = activeCategoryId
     ? items.filter((i) => i.category_id === activeCategoryId)
     : items;
 
+  // apply vegFilter and vegSort to produce displayItems
   const displayItems = (() => {
     let arr = filteredItemsByCategory.slice();
 
+    // vegFilter: show only veg/nonveg or all
     if (vegFilter === 'veg') {
       arr = arr.filter((i) => i.veg === true);
     } else if (vegFilter === 'nonveg') {
       arr = arr.filter((i) => i.veg === false);
     }
 
+    // vegSort: reorder but keep stability
     if (vegSort === 'veg-first') {
       arr.sort((a, b) => {
+        // veg === true should come before false
         if (a.veg === b.veg) return 0;
         return a.veg ? -1 : 1;
       });
@@ -72,44 +78,23 @@ export default function SukhakartaMenu() {
     return arr;
   })();
 
+  // --------- Quantity helpers ----------
   const getQuantity = (id) => quantities[id] || 0;
 
-  // NEW: Modified to respect minimum quantity
   const changeQuantity = (id, delta) => {
-    const item = items.find(i => i.id === id);
-    const minQty = item?.min_quantity || 1;
-    
     setQuantities((prev) => {
       const current = prev[id] || 0;
       const next = current + delta;
-      
-      // If trying to decrease below minimum, remove item completely
-      if (next < minQty && next !== 0) {
-        return prev; // Don't allow quantities below minimum (except 0)
-      }
-      
-      // If next is 0, remove from cart
       if (next <= 0) {
         const copy = { ...prev };
         delete copy[id];
         return copy;
       }
-      
       return { ...prev, [id]: next };
     });
   };
 
-  // NEW: Add item with minimum quantity
-  const addItemToCart = (id) => {
-    const item = items.find(i => i.id === id);
-    const minQty = item?.min_quantity || 1;
-    
-    setQuantities((prev) => ({
-      ...prev,
-      [id]: minQty
-    }));
-  };
-
+  // --------- Cart derived values ----------
   const cartItems = items
     .map((item) => ({
       ...item,
@@ -136,6 +121,7 @@ export default function SukhakartaMenu() {
     }
     setRoomError('');
 
+    // Prepare payload for Google Sheet
     const payload = {
       roomNo,
       orderTotal: cartTotal,
@@ -147,9 +133,10 @@ export default function SukhakartaMenu() {
       })),
     };
 
+    // Build WhatsApp message
     const lines = payload.items
       .map(
-        (it) => `• ${it.qty} x ${it.itemName} — ₹${it.total.toFixed(0)}`
+        (it) => `• ${it.qty} x ${it.itemName} – ₹${it.total.toFixed(0)}`
       )
       .join('\n');
 
@@ -163,8 +150,10 @@ export default function SukhakartaMenu() {
       message
     )}`;
 
+    // 🚀 Open WhatsApp immediately
     window.open(url, '_blank');
 
+    // 🔄 Fire-and-forget: log to Google Sheet in background
     try {
       fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
@@ -178,12 +167,15 @@ export default function SukhakartaMenu() {
       console.error('Failed to log order to Google Sheet:', err);
     }
 
+    // Clear cart after placing order
     setQuantities({});
+    // keep roomNo as is
   };
 
   return (
     <div className="page">
       <div className="card">
+        {/* ---------- LOGO + HEADER ---------- */}
         <div className="logo-header">
           <a
             href={WEBSITE_URL}
@@ -209,6 +201,7 @@ export default function SukhakartaMenu() {
           </div>
         </div>
 
+        {/* ---------- CATEGORY TABS + FILTERS ---------- */}
         <div className="tabs-wrapper">
           <div className="tabs">
             {categories.map((cat) => (
@@ -224,6 +217,7 @@ export default function SukhakartaMenu() {
             ))}
           </div>
 
+          {/* Filters area */}
           <div className="filters">
             <div className="filter-group">
               <label>Show</label>
@@ -285,16 +279,15 @@ export default function SukhakartaMenu() {
           <p className="info">No items in this category / filter yet.</p>
         )}
 
+        {/* ---------- MENU ITEMS ---------- */}
         <div className="items">
           {displayItems.map((item, index) => {
             const qty = getQuantity(item.id);
-            const minQty = item.min_quantity || 1;
-            
             return (
               <article
                 key={item.id}
                 className="item"
-                style={{ animationDelay: `${0.04 * index}s` }}
+                style={{ animationDelay: `${0.04 * index}s` }} // staggered animation
               >
                 <div className="item-image">
                   {item.image_url ? (
@@ -319,53 +312,30 @@ export default function SukhakartaMenu() {
                   )}
 
                   <div className="bottom-row">
-                    <div className="left-info">
-                      <span className={`pill ${item.veg ? 'veg' : 'nonveg'}`}>
-                        <span className="dot" /> {item.veg ? 'Veg' : 'Non-Veg'}
-                      </span>
-                      
-                      {/* NEW: Show minimum quantity badge */}
-                      {minQty > 1 && (
-                        <span className="min-qty-badge">
-                          Min: {minQty}
-                        </span>
-                      )}
-                    </div>
+                    <span className={`pill ${item.veg ? 'veg' : 'nonveg'}`}>
+                      <span className="dot" /> {item.veg ? 'Veg' : 'Non-Veg'}
+                    </span>
 
                     <div className="actions">
-                      {qty === 0 ? (
-                        /* NEW: Add to cart button when quantity is 0 */
+                      <div className="qty-wrapper">
                         <button
                           type="button"
-                          className="add-btn"
-                          onClick={() => addItemToCart(item.id)}
+                          className="qty-btn"
+                          onClick={() => changeQuantity(item.id, -1)}
                         >
-                          Add {minQty > 1 ? `(${minQty})` : ''}
+                          −
                         </button>
-                      ) : (
-                        /* Quantity controls when item is in cart */
-                        <>
-                          <div className="qty-wrapper">
-                            <button
-                              type="button"
-                              className="qty-btn"
-                              onClick={() => changeQuantity(item.id, -minQty)}
-                              title={`Remove ${minQty} or clear from cart`}
-                            >
-                              −
-                            </button>
-                            <span className="qty-value">{qty}</span>
-                            <button
-                              type="button"
-                              className="qty-btn"
-                              onClick={() => changeQuantity(item.id, +minQty)}
-                              title={`Add ${minQty} more`}
-                            >
-                              +
-                            </button>
-                          </div>
-                          <span className="in-cart-tag">In cart</span>
-                        </>
+                        <span className="qty-value">{qty}</span>
+                        <button
+                          type="button"
+                          className="qty-btn"
+                          onClick={() => changeQuantity(item.id, +1)}
+                        >
+                          +
+                        </button>
+                      </div>
+                      {qty > 0 && (
+                        <span className="in-cart-tag">In cart</span>
                       )}
                     </div>
                   </div>
@@ -375,6 +345,7 @@ export default function SukhakartaMenu() {
           })}
         </div>
 
+        {/* ---------- CART BAR ---------- */}
         {cartItems.length > 0 && (
           <div className="cart-shell">
             <div className="cart-bar">
@@ -418,19 +389,19 @@ export default function SukhakartaMenu() {
         )}
       </div>
 
+      {/* ---------- STYLES ---------- */}
       <style jsx>{`
         .page {
           min-height: 100vh;
           display: flex;
           justify-content: center;
           align-items: flex-start;
-          padding: 28px 12px 32px;
+          padding: 28px 12px 32px; /* more top padding so tabs don't look cut */
           background: radial-gradient(
             circle at top,
             #fff7e6 0%,
             #e5e7eb 60%,
             #f9fafb 100%
-            padding-bottom: 120px;
           );
           font-family: system-ui, -apple-system, BlinkMacSystemFont,
             'Segoe UI', sans-serif;
@@ -443,12 +414,13 @@ export default function SukhakartaMenu() {
           backdrop-filter: blur(16px);
           border-radius: 24px;
           padding: 18px 16px 24px;
-          margin-top: 4px;
+          margin-top: 4px; /* small margin from top to avoid cut look */
           box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
           animation: floatIn 0.45s ease-out;
           position: relative;
         }
 
+        /* Header with logo */
         .logo-header {
           display: flex;
           align-items: center;
@@ -669,13 +641,6 @@ export default function SukhakartaMenu() {
           gap: 8px;
         }
 
-        .left-info {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          flex-wrap: wrap;
-        }
-
         .pill {
           display: inline-flex;
           align-items: center;
@@ -703,38 +668,10 @@ export default function SukhakartaMenu() {
           background: currentColor;
         }
 
-        .min-qty-badge {
-          display: inline-flex;
-          padding: 3px 8px;
-          border-radius: 999px;
-          font-size: 10px;
-          font-weight: 600;
-          background: #fef3c7;
-          color: #92400e;
-        }
-
         .actions {
           display: flex;
           align-items: center;
           gap: 8px;
-        }
-
-        .add-btn {
-          border: none;
-          border-radius: 999px;
-          padding: 6px 14px;
-          font-size: 12px;
-          font-weight: 600;
-          background: linear-gradient(135deg, #16a34a, #22c55e);
-          color: white;
-          cursor: pointer;
-          box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3);
-          transition: all 0.2s;
-        }
-
-        .add-btn:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 6px 16px rgba(22, 163, 74, 0.4);
         }
 
         .qty-wrapper {
@@ -771,19 +708,23 @@ export default function SukhakartaMenu() {
           color: #166534;
         }
 
+        /* Cart area */
         .cart-shell {
           margin-top: 16px;
         }
 
         .cart-bar {
-          position: fixed;
-          bottom: 12px;
-          left: 50%;
-          transform: translateX(-50%);
-          width: calc(100% - 24px);
-          max-width: 760px;
-          z-index: 999;
-          padding-bottom: env(safe-area-inset-bottom);
+          position: sticky;
+          bottom: 0;
+          padding: 8px 10px;
+          border-radius: 18px;
+          background: rgba(15, 23, 42, 0.9);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          color: #e5e7eb;
+        }
 
         .cart-main {
           display: flex;
