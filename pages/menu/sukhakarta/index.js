@@ -174,8 +174,9 @@ export default function SukhakartaMenu() {
   };
 
   return (
-    <div className="page">
-      <div className="card">
+    <>
+      <div className="page">
+        <div className="card">
         <div className="logo-header">
           <a
             href={WEBSITE_URL}
@@ -354,53 +355,54 @@ export default function SukhakartaMenu() {
         </div>
 
         {/* Add spacing at bottom when cart is visible */}
-        {cartItems.length > 0 && <div style={{ height: '140px' }} />}
+        {cartItems.length > 0 && <div style={{ height: '160px' }} />}
       </div>
+    </div>
 
-      {/* Sticky cart bar - now outside main card and always visible when items in cart */}
-      {cartItems.length > 0 && (
-        <div className="cart-shell">
-          <div className="cart-bar">
-            <div className="cart-main">
-              <div className="cart-info">
-                <span>
-                  {cartCount} item{cartCount > 1 ? 's' : ''}
-                </span>
-                <span>₹{cartTotal.toFixed(0)}</span>
-              </div>
-
-              <div className="room-select">
-                <span className="room-label">Room</span>
-                <div className="room-buttons">
-                  {[1, 2, 3].map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      className={`room-btn ${
-                        roomNo === String(n) ? 'room-btn-active' : ''
-                      }`}
-                      onClick={() => setRoomNo(String(n))}
-                    >
-                      {n}
-                    </button>
-                  ))}
-                </div>
-              </div>
+    {/* Sticky cart bar - completely outside page div */}
+    {cartItems.length > 0 && (
+      <div className="cart-shell-fixed">
+        <div className="cart-bar">
+          <div className="cart-main">
+            <div className="cart-info">
+              <span>
+                {cartCount} item{cartCount > 1 ? 's' : ''}
+              </span>
+              <span>₹{cartTotal.toFixed(0)}</span>
             </div>
 
-            <button
-              type="button"
-              className="cart-btn"
-              onClick={handlePlaceOrder}
-            >
-              Place Order
-            </button>
+            <div className="room-select">
+              <span className="room-label">Room</span>
+              <div className="room-buttons">
+                {[1, 2, 3].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    className={`room-btn ${
+                      roomNo === String(n) ? 'room-btn-active' : ''
+                    }`}
+                    onClick={() => setRoomNo(String(n))}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-          {roomError && <p className="room-error">{roomError}</p>}
-        </div>
-      )}
 
-      <style jsx>{`
+          <button
+            type="button"
+            className="cart-btn"
+            onClick={handlePlaceOrder}
+          >
+            Place Order
+          </button>
+        </div>
+        {roomError && <p className="room-error">{roomError}</p>}
+      </div>
+    )}
+
+    <style jsx>{`
       </div>
 
       <style jsx>{`
@@ -758,6 +760,17 @@ export default function SukhakartaMenu() {
           pointer-events: none;
         }
 
+        .cart-shell-fixed {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          padding: 0 12px 12px 12px;
+          background: transparent;
+          z-index: 9999;
+          pointer-events: none;
+        }
+
         .cart-bar {
           max-width: 760px;
           margin: 0 auto;
@@ -907,7 +920,7 @@ export default function SukhakartaMenu() {
             width: 100%;
             justify-content: flex-end;
           }
-          .cart-shell {
+          .cart-shell-fixed {
             padding: 0 8px 8px 8px;
           }
           .cart-bar {
@@ -941,6 +954,6 @@ export default function SukhakartaMenu() {
           }
         }
       `}</style>
-    </div>
+    </>
   );
 }
