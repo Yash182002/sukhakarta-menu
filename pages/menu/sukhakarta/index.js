@@ -353,47 +353,52 @@ export default function SukhakartaMenu() {
           })}
         </div>
 
-        {cartItems.length > 0 && (
-          <div className="cart-shell">
-            <div className="cart-bar">
-              <div className="cart-main">
-                <div className="cart-info">
-                  <span>
-                    {cartCount} item{cartCount > 1 ? 's' : ''}
-                  </span>
-                  <span>₹{cartTotal.toFixed(0)}</span>
-                </div>
+        {/* Add spacing at bottom when cart is visible */}
+        {cartItems.length > 0 && <div style={{ height: '120px' }} />}
+      </div>
 
-                <div className="room-select">
-                  <span className="room-label">Room</span>
-                  <div className="room-buttons">
-                    {[1, 2, 3].map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        className={`room-btn ${
-                          roomNo === String(n) ? 'room-btn-active' : ''
-                        }`}
-                        onClick={() => setRoomNo(String(n))}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+      {/* Sticky cart bar - now outside main card */}
+      {cartItems.length > 0 && (
+        <div className="cart-shell">
+          <div className="cart-bar">
+            <div className="cart-main">
+              <div className="cart-info">
+                <span>
+                  {cartCount} item{cartCount > 1 ? 's' : ''}
+                </span>
+                <span>₹{cartTotal.toFixed(0)}</span>
               </div>
 
-              <button
-                type="button"
-                className="cart-btn"
-                onClick={handlePlaceOrder}
-              >
-                Place Order
-              </button>
+              <div className="room-select">
+                <span className="room-label">Room</span>
+                <div className="room-buttons">
+                  {[1, 2, 3].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`room-btn ${
+                        roomNo === String(n) ? 'room-btn-active' : ''
+                      }`}
+                      onClick={() => setRoomNo(String(n))}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
-            {roomError && <p className="room-error">{roomError}</p>}
+
+            <button
+              type="button"
+              className="cart-btn"
+              onClick={handlePlaceOrder}
+            >
+              Place Order
+            </button>
           </div>
-        )}
+          {roomError && <p className="room-error">{roomError}</p>}
+        </div>
+      )}
       </div>
 
       <style jsx>{`
@@ -737,20 +742,31 @@ export default function SukhakartaMenu() {
         }
 
         .cart-shell {
-          margin-top: 16px;
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          padding: 12px;
+          background: transparent;
+          z-index: 1000;
+          pointer-events: none;
         }
 
         .cart-bar {
-          position: sticky;
-          bottom: 0;
-          padding: 8px 10px;
-          border-radius: 18px;
-          background: rgba(15, 23, 42, 0.9);
+          max-width: 760px;
+          margin: 0 auto;
+          padding: 12px 14px;
+          border-radius: 20px;
+          background: rgba(15, 23, 42, 0.95);
+          backdrop-filter: blur(12px);
           display: flex;
           justify-content: space-between;
           align-items: center;
-          gap: 10px;
+          gap: 12px;
           color: #e5e7eb;
+          box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.4);
+          pointer-events: auto;
+          animation: slideUp 0.3s ease-out;
         }
 
         .cart-main {
@@ -816,9 +832,21 @@ export default function SukhakartaMenu() {
         }
 
         .room-error {
-          margin: 4px 4px 0;
+          text-align: center;
+          margin: 8px 0 0;
           font-size: 11px;
           color: #fecaca;
+        }
+
+        @keyframes slideUp {
+          from {
+            opacity: 0;
+            transform: translateY(100%);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
 
         @keyframes floatIn {
