@@ -3,9 +3,9 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { supabase } from '../../../lib/supabaseClient';
 
-const LOGO_URL = '/logo.png'; // put logo file in /public/logo.png
-const WEBSITE_URL = 'https://sukhakarta-menu.vercel.app/menu/sukhakarta'; // TODO: change to your real site
-const WHATSAPP_NUMBER = '918087541496'; // your WhatsApp number
+const LOGO_URL = '/logo.png';
+const WEBSITE_URL = 'https://sukhakarta-menu.vercel.app/menu/sukhakarta';
+const WHATSAPP_NUMBER = '918087541496';
 const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzGgdzhju1saQtH1aDKqVWgp0yFEn2TK-6bgHmDxSlQVsrCdU4UbRv5qd8LgkFU8f_h/exec';
 
 export default function SukhakartaMenu() {
@@ -13,13 +13,12 @@ export default function SukhakartaMenu() {
   const [items, setItems] = useState([]);
   const [activeCategoryId, setActiveCategoryId] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [quantities, setQuantities] = useState({}); // item.id -> quantity
-  const [roomNo, setRoomNo] = useState(''); // room selection 1–3
+  const [quantities, setQuantities] = useState({});
+  const [roomNo, setRoomNo] = useState('');
   const [roomError, setRoomError] = useState('');
 
-  // NEW: veg filter & sort
-  const [vegFilter, setVegFilter] = useState('all'); // 'all' | 'veg' | 'nonveg'
-  const [vegSort, setVegSort] = useState('default'); // 'default' | 'veg-first' | 'nonveg-first'
+  const [vegFilter, setVegFilter] = useState('all');
+  const [vegSort, setVegSort] = useState('default');
 
   useEffect(() => {
     const loadData = async () => {
@@ -46,26 +45,21 @@ export default function SukhakartaMenu() {
     loadData();
   }, []);
 
-  // base items filtered by category
   const filteredItemsByCategory = activeCategoryId
     ? items.filter((i) => i.category_id === activeCategoryId)
     : items;
 
-  // apply vegFilter and vegSort to produce displayItems
   const displayItems = (() => {
     let arr = filteredItemsByCategory.slice();
 
-    // vegFilter: show only veg/nonveg or all
     if (vegFilter === 'veg') {
       arr = arr.filter((i) => i.veg === true);
     } else if (vegFilter === 'nonveg') {
       arr = arr.filter((i) => i.veg === false);
     }
 
-    // vegSort: reorder but keep stability
     if (vegSort === 'veg-first') {
       arr.sort((a, b) => {
-        // veg === true should come before false
         if (a.veg === b.veg) return 0;
         return a.veg ? -1 : 1;
       });
@@ -78,23 +72,35 @@ export default function SukhakartaMenu() {
     return arr;
   })();
 
-  // --------- Quantity helpers ----------
   const getQuantity = (id) => quantities[id] || 0;
 
+  // NEW: Modified to respect minimum quantity
   const changeQuantity = (id, delta) => {
+    const item = items.find((i) => i.id === id);
+    if (!item) return;
+
+    const minQty = item.min_quantity || 1;
+    
     setQuantities((prev) => {
       const current = prev[id] || 0;
       const next = current + delta;
-      if (next <= 0) {
+      
+      // If decreasing and would go below minimum, remove from cart entirely
+      if (next < minQty) {
         const copy = { ...prev };
         delete copy[id];
         return copy;
       }
+      
+      // If increasing from 0, set to minimum quantity
+      if (current === 0 && delta > 0) {
+        return { ...prev, [id]: minQty };
+      }
+      
       return { ...prev, [id]: next };
     });
   };
 
-  // --------- Cart derived values ----------
   const cartItems = items
     .map((item) => ({
       ...item,
@@ -121,7 +127,6 @@ export default function SukhakartaMenu() {
     }
     setRoomError('');
 
-    // Prepare payload for Google Sheet
     const payload = {
       roomNo,
       orderTotal: cartTotal,
@@ -133,10 +138,9 @@ export default function SukhakartaMenu() {
       })),
     };
 
-    // Build WhatsApp message
     const lines = payload.items
       .map(
-        (it) => `• ${it.qty} x ${it.itemName} – ₹${it.total.toFixed(0)}`
+        (it) => `• ${it.qty} x ${it.itemName} — ₹${it.total.toFixed(0)}`
       )
       .join('\n');
 
@@ -150,10 +154,8 @@ export default function SukhakartaMenu() {
       message
     )}`;
 
-    // 🚀 Open WhatsApp immediately
     window.open(url, '_blank');
 
-    // 🔄 Fire-and-forget: log to Google Sheet in background
     try {
       fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
@@ -167,15 +169,12 @@ export default function SukhakartaMenu() {
       console.error('Failed to log order to Google Sheet:', err);
     }
 
-    // Clear cart after placing order
     setQuantities({});
-    // keep roomNo as is
   };
 
   return (
     <div className="page">
       <div className="card">
-        {/* ---------- LOGO + HEADER ---------- */}
         <div className="logo-header">
           <a
             href={WEBSITE_URL}
@@ -201,7 +200,6 @@ export default function SukhakartaMenu() {
           </div>
         </div>
 
-        {/* ---------- CATEGORY TABS + FILTERS ---------- */}
         <div className="tabs-wrapper">
           <div className="tabs">
             {categories.map((cat) => (
@@ -217,7 +215,6 @@ export default function SukhakartaMenu() {
             ))}
           </div>
 
-          {/* Filters area */}
           <div className="filters">
             <div className="filter-group">
               <label>Show</label>
@@ -279,15 +276,16 @@ export default function SukhakartaMenu() {
           <p className="info">No items in this category / filter yet.</p>
         )}
 
-        {/* ---------- MENU ITEMS ---------- */}
         <div className="items">
           {displayItems.map((item, index) => {
             const qty = getQuantity(item.id);
+            const minQty = item.min_quantity || 1;
+            
             return (
               <article
                 key={item.id}
                 className="item"
-                style={{ animationDelay: `${0.04 * index}s` }} // staggered animation
+                style={{ animationDelay: `${0.04 * index}s` }}
               >
                 <div className="item-image">
                   {item.image_url ? (
@@ -312,9 +310,18 @@ export default function SukhakartaMenu() {
                   )}
 
                   <div className="bottom-row">
-                    <span className={`pill ${item.veg ? 'veg' : 'nonveg'}`}>
-                      <span className="dot" /> {item.veg ? 'Veg' : 'Non-Veg'}
-                    </span>
+                    <div className="tags">
+                      <span className={`pill ${item.veg ? 'veg' : 'nonveg'}`}>
+                        <span className="dot" /> {item.veg ? 'Veg' : 'Non-Veg'}
+                      </span>
+                      
+                      {/* NEW: Show minimum quantity badge if > 1 */}
+                      {minQty > 1 && (
+                        <span className="min-qty-badge">
+                          Min: {minQty}
+                        </span>
+                      )}
+                    </div>
 
                     <div className="actions">
                       <div className="qty-wrapper">
@@ -322,6 +329,7 @@ export default function SukhakartaMenu() {
                           type="button"
                           className="qty-btn"
                           onClick={() => changeQuantity(item.id, -1)}
+                          disabled={qty === 0}
                         >
                           −
                         </button>
@@ -345,7 +353,6 @@ export default function SukhakartaMenu() {
           })}
         </div>
 
-        {/* ---------- CART BAR ---------- */}
         {cartItems.length > 0 && (
           <div className="cart-shell">
             <div className="cart-bar">
@@ -389,14 +396,13 @@ export default function SukhakartaMenu() {
         )}
       </div>
 
-      {/* ---------- STYLES ---------- */}
       <style jsx>{`
         .page {
           min-height: 100vh;
           display: flex;
           justify-content: center;
           align-items: flex-start;
-          padding: 28px 12px 32px; /* more top padding so tabs don't look cut */
+          padding: 28px 12px 32px;
           background: radial-gradient(
             circle at top,
             #fff7e6 0%,
@@ -414,13 +420,12 @@ export default function SukhakartaMenu() {
           backdrop-filter: blur(16px);
           border-radius: 24px;
           padding: 18px 16px 24px;
-          margin-top: 4px; /* small margin from top to avoid cut look */
+          margin-top: 4px;
           box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
           animation: floatIn 0.45s ease-out;
           position: relative;
         }
 
-        /* Header with logo */
         .logo-header {
           display: flex;
           align-items: center;
@@ -641,6 +646,13 @@ export default function SukhakartaMenu() {
           gap: 8px;
         }
 
+        .tags {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+
         .pill {
           display: inline-flex;
           align-items: center;
@@ -668,6 +680,16 @@ export default function SukhakartaMenu() {
           background: currentColor;
         }
 
+        .min-qty-badge {
+          display: inline-flex;
+          padding: 3px 8px;
+          border-radius: 999px;
+          font-size: 10px;
+          font-weight: 600;
+          background: #fef3c7;
+          color: #92400e;
+        }
+
         .actions {
           display: flex;
           align-items: center;
@@ -691,6 +713,12 @@ export default function SukhakartaMenu() {
           line-height: 1;
           padding: 2px 6px;
           cursor: pointer;
+          transition: opacity 0.15s;
+        }
+
+        .qty-btn:disabled {
+          opacity: 0.3;
+          cursor: not-allowed;
         }
 
         .qty-value {
@@ -708,7 +736,6 @@ export default function SukhakartaMenu() {
           color: #166534;
         }
 
-        /* Cart area */
         .cart-shell {
           margin-top: 16px;
         }
