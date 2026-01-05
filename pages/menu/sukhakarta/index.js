@@ -83,6 +83,12 @@ export default function SukhakartaMenu() {
     
     setQuantities((prev) => {
       const current = prev[id] || 0;
+      
+      // If increasing from 0, set to minimum quantity
+      if (current === 0 && delta > 0) {
+        return { ...prev, [id]: minQty };
+      }
+      
       const next = current + delta;
       
       // If decreasing and would go below minimum, remove from cart entirely
@@ -90,11 +96,6 @@ export default function SukhakartaMenu() {
         const copy = { ...prev };
         delete copy[id];
         return copy;
-      }
-      
-      // If increasing from 0, set to minimum quantity
-      if (current === 0 && delta > 0) {
-        return { ...prev, [id]: minQty };
       }
       
       return { ...prev, [id]: next };
@@ -329,7 +330,6 @@ export default function SukhakartaMenu() {
                           type="button"
                           className="qty-btn"
                           onClick={() => changeQuantity(item.id, -1)}
-                          disabled={qty === 0}
                         >
                           −
                         </button>
