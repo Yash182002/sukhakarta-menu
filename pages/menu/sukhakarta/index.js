@@ -354,10 +354,10 @@ export default function SukhakartaMenu() {
         </div>
 
         {/* Add spacing at bottom when cart is visible */}
-        {cartItems.length > 0 && <div style={{ height: '120px' }} />}
+        {cartItems.length > 0 && <div style={{ height: '140px' }} />}
       </div>
 
-      {/* Sticky cart bar - now outside main card */}
+      {/* Sticky cart bar - now outside main card and always visible when items in cart */}
       {cartItems.length > 0 && (
         <div className="cart-shell">
           <div className="cart-bar">
@@ -399,9 +399,15 @@ export default function SukhakartaMenu() {
           {roomError && <p className="room-error">{roomError}</p>}
         </div>
       )}
+
+      <style jsx>{`
       </div>
 
       <style jsx>{`
+        * {
+          box-sizing: border-box;
+        }
+        
         .page {
           min-height: 100vh;
           display: flex;
@@ -746,7 +752,7 @@ export default function SukhakartaMenu() {
           bottom: 0;
           left: 0;
           right: 0;
-          padding: 12px;
+          padding: 0 12px 12px 12px;
           background: transparent;
           z-index: 1000;
           pointer-events: none;
@@ -755,18 +761,20 @@ export default function SukhakartaMenu() {
         .cart-bar {
           max-width: 760px;
           margin: 0 auto;
-          padding: 12px 14px;
+          padding: 14px 16px;
           border-radius: 20px;
-          background: rgba(15, 23, 42, 0.95);
-          backdrop-filter: blur(12px);
+          background: rgba(15, 23, 42, 0.97);
+          backdrop-filter: blur(16px);
           display: flex;
           justify-content: space-between;
           align-items: center;
           gap: 12px;
           color: #e5e7eb;
-          box-shadow: 0 -8px 32px rgba(15, 23, 42, 0.4);
+          box-shadow: 0 -10px 40px rgba(15, 23, 42, 0.5),
+                      0 4px 20px rgba(0, 0, 0, 0.3);
           pointer-events: auto;
-          animation: slideUp 0.3s ease-out;
+          animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+          border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .cart-main {
@@ -841,7 +849,7 @@ export default function SukhakartaMenu() {
         @keyframes slideUp {
           from {
             opacity: 0;
-            transform: translateY(100%);
+            transform: translateY(120px);
           }
           to {
             opacity: 1;
@@ -899,18 +907,32 @@ export default function SukhakartaMenu() {
             width: 100%;
             justify-content: flex-end;
           }
+          .cart-shell {
+            padding: 0 8px 8px 8px;
+          }
           .cart-bar {
             flex-direction: column;
             align-items: stretch;
             border-radius: 16px;
+            padding: 12px;
+            gap: 10px;
           }
           .cart-main {
             flex-direction: column;
             align-items: flex-start;
+            gap: 8px;
+          }
+          .cart-info {
+            width: 100%;
+          }
+          .room-select {
+            width: 100%;
           }
           .cart-btn {
             width: 100%;
             text-align: center;
+            padding: 10px 16px;
+            font-size: 14px;
           }
           .filters {
             flex-direction: column;
