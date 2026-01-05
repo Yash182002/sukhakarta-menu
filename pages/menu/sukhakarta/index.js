@@ -430,6 +430,7 @@ export default function SukhakartaMenu() {
             #fff7e6 0%,
             #e5e7eb 60%,
             #f9fafb 100%
+            padding-bottom: 120px;
           );
           font-family: system-ui, -apple-system, BlinkMacSystemFont,
             'Segoe UI', sans-serif;
@@ -775,17 +776,14 @@ export default function SukhakartaMenu() {
         }
 
         .cart-bar {
-          position: sticky;
-          bottom: 0;
-          padding: 8px 10px;
-          border-radius: 18px;
-          background: rgba(15, 23, 42, 0.9);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 10px;
-          color: #e5e7eb;
-        }
+          position: fixed;
+          bottom: 12px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: calc(100% - 24px);
+          max-width: 760px;
+          z-index: 999;
+          padding-bottom: env(safe-area-inset-bottom);
 
         .cart-main {
           display: flex;
