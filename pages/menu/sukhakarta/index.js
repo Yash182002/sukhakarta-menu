@@ -402,9 +402,6 @@ export default function SukhakartaMenu() {
       </div>
     )}
 
-    <style jsx>{`
-      </div>
-
       <style jsx>{`
         * {
           box-sizing: border-box;
