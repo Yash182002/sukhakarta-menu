@@ -6,7 +6,7 @@ import { supabase } from '../../../lib/supabaseClient';
 const LOGO_URL = '/logo.png';
 const WEBSITE_URL = 'https://sukhakarta-menu.vercel.app/menu/sukhakarta';
 const WHATSAPP_NUMBER = '918087541496';
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwPNZnt6Z32kUR9PDLWCL_2gwM8vpUTanX6wsJzzfJS3dAYReK8OxrWJ6TtTC5Lz56S/exec';
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzvdGM5-N3Iz7UZ47FL6HACj85DivSIv1_joBvXvs9aHOTGtk1UjYHt6Ph3Z5FNTay9/exec';
 
 export default function SukhakartaMenu() {
   const [categories, setCategories] = useState([]);
